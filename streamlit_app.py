@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import time
 from collections import defaultdict
@@ -27,6 +28,15 @@ from urllib.parse import urlparse
 import httpx
 import streamlit as st
 from anthropic import AsyncAnthropic
+
+
+# ---------- LLM backend switch ----------------------------------------------
+# Set LLM_BACKEND=ollama to route ICP inference to a local Ollama model
+# (no API cost, no key required — but the app must run on a machine with
+# Ollama listening, so Streamlit Cloud won't work with this path).
+LLM_BACKEND = os.environ.get("LLM_BACKEND", "anthropic").lower()
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b")
 
 from signalforge.config import Env, ICPConfig
 from signalforge.enrichment import fetch_company_context
@@ -150,10 +160,22 @@ ICP_INFERENCE_SYSTEM = dedent("""\
 
 
 async def _infer_icp(domain: str, ctx_text: str, name_hint: str, env: Env) -> dict:
+    user = dedent(f"""\
+        Company domain: {domain}
+        Public context snippet (scraped):
+        ---
+        {ctx_text[:2500] or '(empty — site did not return readable text)'}
+        ---
+        Return JSON only.
+    """)
+
+    if LLM_BACKEND == "ollama":
+        return await _infer_icp_ollama(user)
+
     if not env.anthropic_api_key:
-        # Stub inference so the app still runs without a key in dev.
+        # Stub inference so the app still runs without any LLM in dev.
         return {
-            "company_summary": f"{name_hint or domain} (no key set — generic ICP used)",
+            "company_summary": f"{name_hint or domain} (no LLM available — generic ICP used)",
             "target_titles": ["VP Engineering", "Head of Growth", "CTO"],
             "target_industries": ["SaaS"],
             "signal_weights": {
@@ -164,14 +186,6 @@ async def _infer_icp(domain: str, ctx_text: str, name_hint: str, env: Env) -> di
         }
 
     client = AsyncAnthropic(api_key=env.anthropic_api_key)
-    user = dedent(f"""\
-        Company domain: {domain}
-        Public context snippet (scraped):
-        ---
-        {ctx_text[:2500] or '(empty — site did not return readable text)'}
-        ---
-        Return JSON only.
-    """)
     msg = await client.messages.create(
         model=env.claude_model_fast,
         max_tokens=700,
@@ -180,6 +194,43 @@ async def _infer_icp(domain: str, ctx_text: str, name_hint: str, env: Env) -> di
     )
     text = "".join(b.text for b in msg.content if getattr(b, "type", None) == "text").strip()
     return _safe_json(text)
+
+
+async def _infer_icp_ollama(user_prompt: str) -> dict:
+    """Local-first ICP inference via Ollama's /api/chat. Requires an Ollama
+    server reachable at OLLAMA_HOST with OLLAMA_MODEL pulled."""
+    payload = {
+        "model": OLLAMA_MODEL,
+        "messages": [
+            {"role": "system", "content": ICP_INFERENCE_SYSTEM},
+            {"role": "user", "content": user_prompt},
+        ],
+        "format": "json",
+        "stream": False,
+        "options": {"temperature": 0.3, "num_predict": 1200},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            r = await client.post(f"{OLLAMA_HOST}/api/chat", json=payload)
+            r.raise_for_status()
+            data = r.json()
+    except Exception as e:  # noqa: BLE001
+        return {
+            "company_summary": f"(ollama error: {e.__class__.__name__})",
+            "target_titles": ["VP Engineering", "Head of Growth", "CTO"],
+            "target_industries": ["SaaS"],
+            "signal_weights": {
+                "hiring": 25, "funding": 20, "exec_change": 15, "product_launch": 10,
+                "press": 10, "github_activity": 10, "earnings": 5,
+            },
+            "why": f"ollama fallback ({OLLAMA_MODEL} @ {OLLAMA_HOST})",
+        }
+    content = (data.get("message") or {}).get("content", "")
+    parsed = _safe_json(content)
+    # Tag so the UI can surface which backend was used.
+    if parsed:
+        parsed.setdefault("_backend", f"ollama:{OLLAMA_MODEL}")
+    return parsed
 
 
 def _safe_json(text: str) -> dict:
