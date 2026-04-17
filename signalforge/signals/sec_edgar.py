@@ -56,6 +56,24 @@ _TICKER_TO_COMPANY: dict[str, tuple[str, str]] = {
     "CVS":  ("cvshealth.com", "CVS Health"),
     "ELV":  ("elevancehealth.com", "Elevance Health"),
     "HUM":  ("humana.com", "Humana"),
+    # Semiconductors + EDA — ICP for chip-design tools & AI-for-hardware
+    "NVDA": ("nvidia.com", "NVIDIA"),
+    "AMD":  ("amd.com", "AMD"),
+    "INTC": ("intel.com", "Intel"),
+    "AVGO": ("broadcom.com", "Broadcom"),
+    "QCOM": ("qualcomm.com", "Qualcomm"),
+    "TSM":  ("tsmc.com", "TSMC"),
+    "ASML": ("asml.com", "ASML"),
+    "AMAT": ("appliedmaterials.com", "Applied Materials"),
+    "LRCX": ("lamresearch.com", "Lam Research"),
+    "KLAC": ("kla.com", "KLA"),
+    "MU":   ("micron.com", "Micron Technology"),
+    "MRVL": ("marvell.com", "Marvell Technology"),
+    "ADI":  ("analog.com", "Analog Devices"),
+    "TXN":  ("ti.com", "Texas Instruments"),
+    "SNPS": ("synopsys.com", "Synopsys"),
+    "CDNS": ("cadence.com", "Cadence Design Systems"),
+    "ARM":  ("arm.com", "Arm"),
 }
 
 

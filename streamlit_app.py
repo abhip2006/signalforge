@@ -487,25 +487,39 @@ def _inject_style() -> None:
 
 # ---------- candidate pool --------------------------------------------------
 
-_POOL_COMPANIES = [
-    # AI-native
-    "anthropic", "openai", "perplexity", "glean", "cohere", "mistralai",
-    "scaleai", "huggingface", "runwayml", "elevenlabs",
-    # GTM / devtools
-    "notion", "ramp", "clay", "unify", "attio", "retool", "linear",
-    "vercel", "supabase", "render", "fly", "replicate",
-    # Enterprise SaaS / fintech
-    "brex", "mercury", "rippling", "deel", "gusto",
-    # YC-adjacent
-    "cal", "resend", "trigger", "dub",
-    # Enterprise security / identity (IAM, zero-trust, cloud sec)
-    "okta", "zscaler", "cloudflare", "rubrik", "abnormalsecurity",
-    "snyk", "wiz", "1password", "semgrep",
-    # Observability / platform
-    "datadog", "newrelic", "gitlab", "jfrog",
-    # Consumer + scale SaaS buyers
-    "stripe", "plaid", "airbnb", "pinterest", "coinbase", "instacart", "loom",
+def _load_live_boards() -> dict[str, list[str]]:
+    """Load the probed-live ATS board list. Written by tools/probe_boards.py
+    into signalforge/resources/live_boards.json (repo-tracked)."""
+    import json as _json
+    from pathlib import Path as _P
+    candidates = [
+        _P(__file__).parent / "signalforge" / "resources" / "live_boards.json",
+        _P("signalforge/resources/live_boards.json"),
+    ]
+    for path in candidates:
+        if path.exists():
+            try:
+                return _json.loads(path.read_text())
+            except Exception:  # noqa: BLE001
+                pass
+    return {"greenhouse": [], "ashby": [], "lever": []}
+
+
+_LIVE_BOARDS = _load_live_boards()
+
+# Semis + infra NOT on Greenhouse/Ashby but filing with the SEC — we pick
+# them up via the EDGAR source. Names echo into HN/news_rss matching.
+_SEMI_AND_PUBLIC_COMPANIES = [
+    "nvidia", "amd", "intel", "broadcom", "qualcomm", "tsmc", "asml",
+    "synopsys", "cadence", "arm", "micron", "marvell",
 ]
+
+_POOL_COMPANIES = sorted(set(
+    _LIVE_BOARDS.get("greenhouse", [])
+    + _LIVE_BOARDS.get("ashby", [])
+    + _LIVE_BOARDS.get("lever", [])
+    + _SEMI_AND_PUBLIC_COMPANIES
+))
 
 _HIRING_KEYWORDS = [
     "sdr", "bdr", "gtm", "go-to-market", "revenue",
@@ -514,32 +528,22 @@ _HIRING_KEYWORDS = [
 ]
 
 CANDIDATE_SOURCES = {
-    # Greenhouse boards — curated list of companies publishing on GH.
+    # Greenhouse boards — sourced from tools/probe_boards.py → data/live_boards.json.
     "greenhouse": {
         "enabled": True,
-        "boards": [
-            # AI / devtools / platform
-            "anthropic", "scaleai", "openai", "perplexity",
-            "glean", "cohere", "mistralai", "huggingface", "runwayml",
-            "elevenlabs", "vercel", "linear", "replicate", "supabase",
-            "rippling", "deel", "gusto", "brex",
-            # Enterprise security + observability (verified 200 OK)
-            "okta", "zscaler", "cloudflare", "rubrik", "abnormalsecurity",
-            "datadog", "newrelic", "gitlab", "jfrog",
-            # Consumer + scale SaaS
-            "stripe", "airbnb", "pinterest", "coinbase", "instacart",
-        ],
+        "boards": _LIVE_BOARDS.get("greenhouse", []),
         "hiring_keywords": _HIRING_KEYWORDS,
     },
-    # Ashby boards — separate company set.
+    # Ashby boards — sourced from the same probe.
     "ashby": {
         "enabled": True,
-        "boards": [
-            "notion", "ramp", "clay", "unify", "attio", "retool",
-            "cal", "resend", "trigger", "dub", "mercury",
-            # Security + scale (verified 200 OK)
-            "snyk", "wiz", "1password", "semgrep", "plaid", "loom",
-        ],
+        "boards": _LIVE_BOARDS.get("ashby", []),
+        "hiring_keywords": _HIRING_KEYWORDS,
+    },
+    # Lever boards — also from the probe.
+    "lever": {
+        "enabled": True,
+        "boards": _LIVE_BOARDS.get("lever", []),
         "hiring_keywords": _HIRING_KEYWORDS,
     },
     "github": {
@@ -565,6 +569,10 @@ CANDIDATE_SOURCES = {
             "JPM", "GS", "BAC", "WFC", "MS",
             # Enterprise buyers — healthcare
             "UNH", "CVS", "ELV", "HUM",
+            # Semiconductors + EDA (for chip-industry visitors)
+            "NVDA", "AMD", "INTC", "AVGO", "QCOM", "TSM", "ASML",
+            "AMAT", "LRCX", "KLAC", "MU", "MRVL", "ADI", "TXN",
+            "SNPS", "CDNS", "ARM",
         ],
         "lookback_days": 60,
     },
@@ -845,6 +853,156 @@ def _signal_to_dict(s: Signal) -> dict:
     }
 
 
+# ---------- industry taxonomy -----------------------------------------------
+# Domain → industry tags. Used to award a match bonus when the visitor's
+# inferred target_industries overlap. Kept inline (vs in the registry) so
+# the scoring concern stays out of the source adapters.
+_INDUSTRY_TAGS: dict[str, list[str]] = {
+    # Semiconductors + EDA
+    "nvidia.com": ["semiconductor", "electronics", "ai-chips"],
+    "amd.com": ["semiconductor", "electronics"],
+    "intel.com": ["semiconductor", "electronics"],
+    "broadcom.com": ["semiconductor", "electronics", "networking"],
+    "qualcomm.com": ["semiconductor", "electronics", "mobile"],
+    "tsmc.com": ["semiconductor", "foundry"],
+    "asml.com": ["semiconductor", "lithography"],
+    "appliedmaterials.com": ["semiconductor", "equipment"],
+    "lamresearch.com": ["semiconductor", "equipment"],
+    "kla.com": ["semiconductor", "equipment"],
+    "micron.com": ["semiconductor", "memory"],
+    "marvell.com": ["semiconductor", "networking"],
+    "analog.com": ["semiconductor", "electronics"],
+    "ti.com": ["semiconductor", "electronics"],
+    "synopsys.com": ["semiconductor", "eda", "software"],
+    "cadence.com": ["semiconductor", "eda", "software"],
+    "arm.com": ["semiconductor", "electronics"],
+    "lightmatter.co": ["semiconductor", "ai-chips", "photonics"],
+    "graphcore.ai": ["semiconductor", "ai-chips"],
+    "tenstorrent.com": ["semiconductor", "ai-chips"],
+    "etched.com": ["semiconductor", "ai-chips"],
+    "asteralabs.com": ["semiconductor", "connectivity"],
+    # Security / IAM
+    "okta.com": ["security", "iam", "identity"],
+    "paloaltonetworks.com": ["security", "network-security"],
+    "crowdstrike.com": ["security", "endpoint"],
+    "zscaler.com": ["security", "cloud-security"],
+    "sentinelone.com": ["security", "endpoint"],
+    "fortinet.com": ["security", "network-security"],
+    "cloudflare.com": ["security", "network", "cdn"],
+    "rubrik.com": ["security", "data-protection"],
+    "abnormal.ai": ["security", "email-security"],
+    "snyk.io": ["security", "devsecops"],
+    "wiz.io": ["security", "cloud-security"],
+    "1password.com": ["security", "iam"],
+    "semgrep.dev": ["security", "devsecops"],
+    "chainguard.dev": ["security", "supply-chain"],
+    # Fintech
+    "stripe.com": ["fintech", "payments"],
+    "plaid.com": ["fintech", "banking-api"],
+    "chime.com": ["fintech", "banking"],
+    "brex.com": ["fintech", "corporate-cards"],
+    "ramp.com": ["fintech", "spend"],
+    "mercury.com": ["fintech", "banking"],
+    "carta.com": ["fintech", "equity"],
+    "jpmorganchase.com": ["finance", "banking"],
+    "goldmansachs.com": ["finance", "banking"],
+    "bankofamerica.com": ["finance", "banking"],
+    "wellsfargo.com": ["finance", "banking"],
+    "morganstanley.com": ["finance", "banking"],
+    # Healthcare
+    "unitedhealthgroup.com": ["healthcare", "insurance"],
+    "cvshealth.com": ["healthcare", "pharmacy"],
+    "elevancehealth.com": ["healthcare", "insurance"],
+    "humana.com": ["healthcare", "insurance"],
+    # AI / ML
+    "anthropic.com": ["ai", "foundation-model"],
+    "openai.com": ["ai", "foundation-model"],
+    "perplexity.ai": ["ai", "search"],
+    "cohere.com": ["ai", "foundation-model"],
+    "mistral.ai": ["ai", "foundation-model"],
+    "huggingface.co": ["ai", "ml-platform"],
+    "scale.com": ["ai", "data-labeling"],
+    "character.ai": ["ai", "consumer"],
+    "harvey.ai": ["ai", "legal"],
+    "langchain.com": ["ai", "developer-tools"],
+    "langfuse.com": ["ai", "observability"],
+    "deepgram.com": ["ai", "speech"],
+    "elevenlabs.io": ["ai", "speech"],
+    "runwayml.com": ["ai", "media"],
+    "replicate.com": ["ai", "ml-platform"],
+    "baseten.co": ["ai", "ml-infra"],
+    # Devtools / infra
+    "vercel.com": ["devtools", "hosting"],
+    "supabase.com": ["devtools", "database"],
+    "cursor.com": ["devtools", "ide"],
+    "linear.app": ["devtools", "pm"],
+    "retool.com": ["devtools", "internal-tools"],
+    "gitlab.com": ["devtools", "git"],
+    "docker.com": ["devtools", "containers"],
+    "postman.com": ["devtools", "api"],
+    "circleci.com": ["devtools", "ci"],
+    "launchdarkly.com": ["devtools", "feature-flags"],
+    "honeycomb.io": ["observability", "devtools"],
+    "grafana.com": ["observability", "devtools"],
+    "datadoghq.com": ["observability", "monitoring"],
+    "newrelic.com": ["observability", "monitoring"],
+    "elastic.co": ["observability", "search"],
+    "posthog.com": ["analytics", "devtools"],
+    "mintlify.com": ["devtools", "docs"],
+    "jfrog.com": ["devtools", "artifacts"],
+    "mongodb.com": ["database"],
+    "snowflake.com": ["data-warehouse"],
+    "servicenow.com": ["enterprise-saas", "itsm"],
+    # Platforms / consumer
+    "notion.so": ["productivity", "saas"],
+    "airtable.com": ["productivity", "saas"],
+    "figma.com": ["design", "saas"],
+    "loom.com": ["productivity", "video"],
+    "dropbox.com": ["storage", "saas"],
+    "reddit.com": ["consumer", "social"],
+    "airbnb.com": ["consumer", "travel"],
+    "pinterest.com": ["consumer", "social"],
+    "coinbase.com": ["fintech", "crypto"],
+    "instacart.com": ["consumer", "delivery"],
+    "lyft.com": ["consumer", "rideshare"],
+    "spotify.com": ["consumer", "music"],
+    "duolingo.com": ["consumer", "education"],
+    "twilio.com": ["comms", "api"],
+    "atlassian.com": ["saas", "collaboration"],
+    "palantir.com": ["enterprise-saas", "data"],
+    "flexport.com": ["logistics"],
+    # HR / payroll
+    "rippling.com": ["hr", "payroll"],
+    "deel.com": ["hr", "global-payroll"],
+    "gusto.com": ["hr", "payroll"],
+    # GTM / sales tools
+    "clay.com": ["gtm", "sales-tools"],
+    "unifygtm.com": ["gtm", "sales-tools"],
+    "attio.com": ["gtm", "crm"],
+    "hubspot.com": ["gtm", "crm"],
+    "salesforce.com": ["gtm", "crm"],
+    "ringcentral.com": ["comms"],
+    "hightouch.com": ["gtm", "reverse-etl"],
+}
+
+
+def _industry_match(domain: str, target_industries: list[str]) -> float:
+    """Return 1.0 for exact-tag match, 0.7 for partial, 0 otherwise. Used
+    as a multiplicative lift in _score_pool so when a chip co visits, the
+    other chip cos rise above generic high-volume leads like Anthropic."""
+    tags = _INDUSTRY_TAGS.get(domain, [])
+    if not tags or not target_industries:
+        return 0.0
+    targets = {t.lower().strip().replace(" ", "-") for t in target_industries}
+    for tag in tags:
+        if tag.lower() in targets:
+            return 1.0
+        for tt in targets:
+            if tag.startswith(tt) or tt.startswith(tag):
+                return 0.7
+    return 0.0
+
+
 # ---------- score the pool against visitor's inferred ICP -------------------
 
 def _score_pool(pool: list[dict], inferred: dict) -> list[dict]:
@@ -874,12 +1032,22 @@ def _score_pool(pool: list[dict], inferred: dict) -> list[dict]:
             )
         )
 
+    target_industries = inferred.get("target_industries") or []
+
     scored: list[tuple[EnrichedAccount, float]] = []
     for domain, sigs in buckets.items():
         name = next((s.company_name for s in sigs if s.company_name), None)
         acc = EnrichedAccount(company=Company(domain=domain, name=name), signals=sigs)
         scored_acc = score_account(acc, icp)
-        scored.append((scored_acc, scored_acc.icp_score))
+        # Industry-match lift: exact-tag matches get a +40 add (clamped at
+        # 100), partial matches get +20. Flat-add rather than multiplier
+        # so low-signal-count matched cos (e.g. a semi with only 3 SEC
+        # filings) still rise above generic high-volume mismatches.
+        match = _industry_match(domain, target_industries)
+        bonus = match * 40.0
+        final_score = min(100.0, scored_acc.icp_score + bonus)
+        scored_acc = scored_acc.model_copy(update={"icp_score": final_score})
+        scored.append((scored_acc, final_score))
 
     scored.sort(key=lambda x: x[1], reverse=True)
     return [

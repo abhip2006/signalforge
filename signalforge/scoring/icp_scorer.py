@@ -17,8 +17,13 @@ def score_account(
     breakdown: dict[str, float] = defaultdict(float)
     reasons: list[str] = []
 
-    # 1. Signal contribution — weighted sum, diminishing returns per kind.
+    # 1. Signal contribution — weighted sum with diminishing returns AND a
+    #    per-kind cap so an ATS board flooding hiring signals can't bury
+    #    a company with a smaller but high-signal-quality mix (e.g. a
+    #    semi vendor's 3 SEC filings vs a mega-employer's 40 open roles).
+    PER_KIND_CAP_MULTIPLE = 3.5  # cap = 3.5× the first signal's contribution
     per_kind_count: dict[str, int] = defaultdict(int)
+    per_kind_first: dict[str, float] = {}
     for sig in account.signals:
         weight = float(icp.signal_weights.get(sig.kind.value, 0.0))
         if weight <= 0:
@@ -27,6 +32,15 @@ def score_account(
         # diminishing returns: 1st = 1.0, 2nd = 0.6, 3rd = 0.35, ...
         multiplier = 1.0 / (1 + 0.6 * (per_kind_count[sig.kind.value] - 1))
         contribution = sig.strength * weight * multiplier
+        if per_kind_count[sig.kind.value] == 1:
+            per_kind_first[sig.kind.value] = contribution
+        # Hard cap per kind at N× the first-hit contribution. Keeps signal
+        # diversity meaningful; prevents a single high-weight kind from
+        # saturating the whole score.
+        remaining = per_kind_first[sig.kind.value] * PER_KIND_CAP_MULTIPLE - breakdown[sig.kind.value]
+        if remaining <= 0:
+            continue
+        contribution = min(contribution, remaining)
         breakdown[sig.kind.value] += contribution
         reasons.append(
             f"{sig.kind.value}:{sig.title[:60]} → +{contribution:.1f} "
