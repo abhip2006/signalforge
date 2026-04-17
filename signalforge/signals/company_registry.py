@@ -63,6 +63,26 @@ KNOWN: dict[str, tuple[str, str]] = {
     "anthropics": ("anthropic.com", "Anthropic"),  # github org
     "clay-labs": ("clay.com", "Clay"),
     "persana": ("persana.ai", "Persana"),
+    # Added April 2026 — candidate-pool expansion
+    "huggingface": ("huggingface.co", "Hugging Face"),
+    "runwayml": ("runwayml.com", "Runway"),
+    "elevenlabs": ("elevenlabs.io", "ElevenLabs"),
+    "linear": ("linear.app", "Linear"),
+    "vercel": ("vercel.com", "Vercel"),
+    "supabase": ("supabase.com", "Supabase"),
+    "render": ("render.com", "Render"),
+    "fly": ("fly.io", "Fly.io"),
+    "replicate": ("replicate.com", "Replicate"),
+    "brex": ("brex.com", "Brex"),
+    "mercury": ("mercury.com", "Mercury"),
+    "deel": ("deel.com", "Deel"),
+    "gusto": ("gusto.com", "Gusto"),
+    "cal": ("cal.com", "Cal.com"),
+    "resend": ("resend.com", "Resend"),
+    "trigger": ("trigger.dev", "Trigger.dev"),
+    "dub": ("dub.co", "Dub"),
+    # GitHub orgs
+    "cohere-ai": ("cohere.com", "Cohere"),
 }
 
 

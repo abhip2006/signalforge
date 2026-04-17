@@ -90,8 +90,11 @@ async def test_demo(url: str, report: Report) -> None:
         # ── 2. Invalid domain ──────────────────────────────────────────────
         try:
             await _fill_domain_and_submit(page, "not a domain!!")
-            await expect(page.get_by_text("doesn't look like a valid domain", exact=False)).to_be_visible(
-                timeout=15_000
+            # Error text changed with the Clearbit fallback: now reads
+            # "Couldn't resolve that — try a domain like `example.com` or…"
+            await page.wait_for_function(
+                "() => document.body.innerText.includes(\"Couldn't resolve\")",
+                timeout=15_000,
             )
             await page.screenshot(path=OUT_DIR / "02-invalid.png", full_page=True)
             report.step("invalid domain → inline error", True)
@@ -155,9 +158,15 @@ async def test_demo(url: str, report: Report) -> None:
 
         # ── 6. Rate limit: second submit within <15s → warning ─────────────
         try:
-            await _fill_domain_and_submit(page, "stripe.com")
-            # Streamlit renders the warning in a data-testid=stAlert* container.
-            # Use a substring match to dodge unicode em-dash fragility.
+            # Use the same (cached) domain so both submits complete in < 1s
+            # and the 15s rate-limit window is guaranteed to cover the gap.
+            await _fill_domain_and_submit(page, "ramp.com")
+            await page.wait_for_function(
+                "() => document.body.innerText.includes('Inferred ICP')",
+                timeout=15_000,
+            )
+            # Immediately submit again — this is the call the rate limit blocks.
+            await _fill_domain_and_submit(page, "ramp.com")
             await page.wait_for_function(
                 "() => document.body.innerText.includes('wait a few seconds')",
                 timeout=10_000,
@@ -180,6 +189,22 @@ async def test_demo(url: str, report: Report) -> None:
         except Exception as e:  # noqa: BLE001
             await page.screenshot(path=OUT_DIR / "05-stripe-FAIL.png", full_page=True)
             report.step("stripe.com produces a distinct ICP analysis", False, repr(e))
+
+        # ── 7b. Plain-name resolution via Clearbit Autocomplete ────────────
+        try:
+            await page.wait_for_timeout(16_000)
+            await _fill_domain_and_submit(page, "Linear")
+            # Either resolved (Matched → Linear …) or full analysis appears.
+            await page.wait_for_function(
+                "() => document.body.innerText.includes('Matched') || "
+                "document.body.innerText.includes('Inferred ICP for')",
+                timeout=120_000,
+            )
+            await page.screenshot(path=OUT_DIR / "07-name-resolution.png", full_page=True)
+            report.step("plain company name 'Linear' resolves via Clearbit", True)
+        except Exception as e:  # noqa: BLE001
+            await page.screenshot(path=OUT_DIR / "07-name-resolution-FAIL.png", full_page=True)
+            report.step("plain company name 'Linear' resolves via Clearbit", False, repr(e))
 
         # ── 8. Re-submit ramp.com (should hit 24h cache, <5s) ──────────────
         try:

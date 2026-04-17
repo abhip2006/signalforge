@@ -4,8 +4,10 @@ from signalforge.signals.base import SignalSource, SourceContext
 from signalforge.signals.exa import ExaSource
 from signalforge.signals.github_activity import GitHubActivitySource
 from signalforge.signals.greenhouse import GreenhouseSource
+from signalforge.signals.hackernews import HackerNewsSource
 from signalforge.signals.lever import LeverSource
 from signalforge.signals.news_rss import NewsRSSSource
+from signalforge.signals.product_hunt import ProductHuntSource
 from signalforge.signals.sec_edgar import SecEdgarSource
 
 REGISTRY: dict[str, type[SignalSource]] = {
@@ -16,6 +18,8 @@ REGISTRY: dict[str, type[SignalSource]] = {
     "sec_edgar": SecEdgarSource,
     "news_rss": NewsRSSSource,
     "exa": ExaSource,
+    "hackernews": HackerNewsSource,
+    "product_hunt": ProductHuntSource,
 }
 
 __all__ = [
@@ -29,4 +33,6 @@ __all__ = [
     "SecEdgarSource",
     "NewsRSSSource",
     "ExaSource",
+    "HackerNewsSource",
+    "ProductHuntSource",
 ]

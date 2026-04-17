@@ -42,49 +42,84 @@ from signalforge.signals.base import SourceContext
 # Ollama listening, so Streamlit Cloud won't work with this path).
 LLM_BACKEND = os.environ.get("LLM_BACKEND", "anthropic").lower()
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")
 
 st.set_page_config(page_title="SignalForge — live GTM lead demo", page_icon="🔍", layout="wide")
 
 
 # ---------- candidate pool --------------------------------------------------
 
+_POOL_COMPANIES = [
+    # AI-native
+    "anthropic", "openai", "perplexity", "glean", "cohere", "mistralai",
+    "scaleai", "huggingface", "runwayml", "elevenlabs",
+    # GTM / devtools
+    "notion", "ramp", "clay", "unify", "attio", "retool", "linear",
+    "vercel", "supabase", "render", "fly", "replicate",
+    # Enterprise SaaS
+    "brex", "mercury", "rippling", "deel", "gusto",
+    # YC-adjacent
+    "cal", "resend", "trigger", "dub",
+]
+
+_HIRING_KEYWORDS = [
+    "sdr", "bdr", "gtm", "go-to-market", "revenue",
+    "sales development", "growth", "developer relations",
+    "head of", "vp ", "director", "chief",
+]
+
 CANDIDATE_SOURCES = {
+    # Greenhouse boards — curated list of companies publishing on GH.
     "greenhouse": {
         "enabled": True,
         "boards": [
             "anthropic", "scaleai", "openai", "perplexity",
-            "glean", "cohere", "mistralai",
+            "glean", "cohere", "mistralai", "huggingface", "runwayml",
+            "elevenlabs", "vercel", "linear", "replicate", "supabase",
+            "rippling", "deel", "gusto", "brex",
         ],
-        "hiring_keywords": [
-            "sdr", "bdr", "gtm", "go-to-market", "revenue",
-            "sales development", "growth", "developer relations",
-            "head of", "vp ",
-        ],
+        "hiring_keywords": _HIRING_KEYWORDS,
     },
+    # Ashby boards — separate company set.
     "ashby": {
         "enabled": True,
-        "boards": ["notion", "ramp", "clay", "unify"],
-        "hiring_keywords": [
-            "sdr", "bdr", "gtm", "go-to-market", "revenue", "growth",
-            "head of", "vp ", "director",
+        "boards": [
+            "notion", "ramp", "clay", "unify", "attio", "retool",
+            "cal", "resend", "trigger", "dub", "mercury",
         ],
+        "hiring_keywords": _HIRING_KEYWORDS,
     },
     "github": {
         "enabled": True,
-        "orgs": ["anthropics", "scaleai", "clay-labs", "unifygtm"],
+        "orgs": [
+            "anthropics", "openai", "scaleai", "clay-labs", "unifygtm",
+            "vercel", "supabase", "huggingface", "cohere-ai", "mistralai",
+        ],
         "lookback_days": 30,
     },
     "sec_edgar": {
         "enabled": True,
-        "tickers": ["CRM", "HUBS", "RNG"],
+        # Public companies whose 8-K/S-1/10-Q tell us meaningful GTM signals.
+        "tickers": ["CRM", "HUBS", "RNG", "NOW", "SNOW", "MDB", "NET", "DDOG"],
         "lookback_days": 60,
     },
     "news_rss": {
         "enabled": True,
-        "match_boards": [
-            "anthropic", "notion", "ramp", "clay", "unify", "openai", "perplexity",
-        ],
+        "match_boards": _POOL_COMPANIES,
+    },
+    "hackernews": {
+        "enabled": True,
+        "companies": _POOL_COMPANIES,
+        "lookback_days": 60,
+        "min_points": 25,
+        "results_per_company": 3,
+    },
+    "product_hunt": {
+        # No-op unless PRODUCT_HUNT_TOKEN is set in the env.
+        "enabled": True,
+        "companies": _POOL_COMPANIES,
+        "lookback_days": 60,
+        "min_votes": 50,
     },
 }
 
@@ -102,6 +137,55 @@ def _normalize(domain_or_url: str) -> str | None:
     if not re.match(r"^[a-z0-9.-]+\.[a-z]{2,}$", s):
         return None
     return s
+
+
+@st.cache_data(ttl=60 * 60 * 24 * 7, show_spinner=False)
+def _resolve_via_clearbit(query: str) -> tuple[str, str] | None:
+    """Free, no-auth Clearbit Autocomplete. Lets a visitor type "stripe" or
+    "Notion" and get back (domain, display_name). Cached 7d — these mappings
+    don't churn. Returns None if no confident match."""
+    q = (query or "").strip()
+    if not q:
+        return None
+    try:
+        import httpx as _httpx
+        r = _httpx.get(
+            "https://autocomplete.clearbit.com/v1/companies/suggest",
+            params={"query": q},
+            timeout=5.0,
+        )
+        r.raise_for_status()
+        hits = r.json()
+    except Exception:  # noqa: BLE001
+        return None
+    if not isinstance(hits, list) or not hits:
+        return None
+    top = hits[0]
+    domain = (top.get("domain") or "").lower().strip()
+    name = (top.get("name") or "").strip()
+    if not domain or not name:
+        return None
+    return domain, name
+
+
+def _resolve_input(raw: str) -> tuple[str, str | None] | None:
+    """Accept either a domain, a URL, or a free-text company name.
+    Returns (domain, optional_display_name) or None if unresolvable."""
+    # 1. Try domain normalization first.
+    direct = _normalize(raw)
+    if direct:
+        return direct, None
+    # 2. Fall back to Clearbit autocomplete if it looks like a company name
+    #    (letters + digits + common punctuation, reasonable length).
+    stripped = (raw or "").strip()
+    if not stripped or len(stripped) > 60:
+        return None
+    if not re.match(r"^[A-Za-z0-9][A-Za-z0-9 .&'\-]{1,58}$", stripped):
+        return None
+    hit = _resolve_via_clearbit(stripped)
+    if hit:
+        return hit
+    return None
 
 
 def _icp_from(raw: dict) -> ICPConfig:
@@ -206,6 +290,9 @@ async def _infer_icp_ollama(user_prompt: str) -> dict:
         ],
         "format": "json",
         "stream": False,
+        # keep_alive pins the model in Ollama's RAM for an hour between calls
+        # so subsequent visitors skip the ~10s model-load cold start.
+        "keep_alive": "1h",
         "options": {"temperature": 0.3, "num_predict": 1200},
     }
     try:
@@ -341,26 +428,64 @@ def _score_pool(pool: list[dict], inferred: dict) -> list[dict]:
     ]
 
 
+# Cached piece 1: scrape the visitor's company page. 24h TTL — About pages don't churn.
 @st.cache_data(ttl=60 * 60 * 24, show_spinner=False)
-def _analyze_cached(visitor_domain: str) -> dict:
-    # Resolve the cached pool in the sync layer so the async run below does
-    # not try to open a nested event loop.
-    pool = _get_pool()
-    return asyncio.run(_analyze(visitor_domain, pool))
-
-
-async def _analyze(visitor_domain: str, pool: list[dict]) -> dict:
+def _get_ctx_cached(visitor_domain: str) -> dict:
     env = Env.load()
-    ctx = await fetch_company_context(visitor_domain, env, max_chars=2500, timeout=10.0)
-    ctx_text = ctx.text if ctx else ""
-    inferred = await _infer_icp(visitor_domain, ctx_text, "", env)
+    ctx = asyncio.run(
+        fetch_company_context(visitor_domain, env, max_chars=2500, timeout=10.0)
+    )
+    if ctx is None:
+        return {"text": "", "source": None, "title": None, "urls": []}
+    return {"text": ctx.text, "source": ctx.source, "title": ctx.title, "urls": ctx.urls_seen}
+
+
+# Cached piece 2: ICP inference from scraped text. Key by (domain, content-hash)
+# so prompt or scrape changes correctly invalidate the cache.
+@st.cache_data(ttl=60 * 60 * 24, show_spinner=False)
+def _get_inference_cached(domain: str, ctx_hash: str, ctx_text: str) -> dict:
+    env = Env.load()
+    return asyncio.run(_infer_icp(domain, ctx_text, "", env))
+
+
+def _ctx_hash(text: str) -> str:
+    import hashlib
+    return hashlib.sha1(text.encode()).hexdigest()[:12]
+
+
+def _analyze_with_progress(visitor_domain: str, status) -> dict:
+    """Step-by-step analysis. Each step writes a line into the Streamlit
+    status block so the visitor sees what's happening, and the pool fetch
+    runs in parallel with the visitor's company scrape on a cold start."""
+    import concurrent.futures
+
+    # Cold-path parallelism: kick off pool fetch in a thread while we scrape
+    # the visitor's own company. When pool is hot (cache hit) this returns
+    # immediately; when cold (~15s), we recover that time against the scrape.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+        fut_pool = ex.submit(_get_pool)
+        status.write("• Scraping the visitor's public page…")
+        fut_ctx = ex.submit(_get_ctx_cached, visitor_domain)
+        ctx = fut_ctx.result()
+        pool = fut_pool.result()
+
+    status.write(f"  ✓ scraped {len(ctx['text'])} chars from {ctx['source'] or 'nothing'}")
+    status.write(f"• Inferring your ICP ({LLM_BACKEND}:{OLLAMA_MODEL if LLM_BACKEND == 'ollama' else 'claude'})…")
+    inferred = _get_inference_cached(visitor_domain, _ctx_hash(ctx["text"]), ctx["text"])
+    status.write(
+        f"  ✓ {len(inferred.get('target_titles', []))} titles · "
+        f"{len(inferred.get('signal_weights', {}))} weighted signal kinds"
+    )
+
+    status.write(f"• Scoring {len(pool)} pool signals against your ICP…")
     ranked = _score_pool(pool, inferred)
-    # Drop the visitor's own company from the leads list.
     ranked = [r for r in ranked if r["domain"] != visitor_domain]
+    status.write(f"  ✓ top lead: {ranked[0]['name'] if ranked else '(none)'}")
+
     return {
         "visitor_domain": visitor_domain,
-        "ctx_len": len(ctx_text),
-        "ctx_source": ctx.source if ctx else None,
+        "ctx_len": len(ctx["text"]),
+        "ctx_source": ctx["source"],
         "inferred": inferred,
         "leads": ranked[:5],
         "pool_size": len(pool),
@@ -381,10 +506,15 @@ with st.form("demo"):
     submitted = st.form_submit_button("Find leads →", type="primary")
 
 if submitted:
-    domain = _normalize(raw_input)
-    if not domain:
-        st.error("That doesn't look like a valid domain. Try `example.com`.")
+    resolved = _resolve_input(raw_input)
+    if not resolved:
+        st.error(
+            "Couldn't resolve that — try a domain like `example.com` or a company name like `Stripe`."
+        )
         st.stop()
+    domain, display_hint = resolved
+    if display_hint:
+        st.caption(f"Matched → **{display_hint}** ({domain})")
 
     now = time.time()
     last = st.session_state.get("last_run", 0)
@@ -393,10 +523,12 @@ if submitted:
         st.stop()
     st.session_state["last_run"] = now
 
-    with st.spinner(f"Analyzing {domain} → inferring ICP → scoring the pool…"):
+    with st.status(f"Running SignalForge on {domain}", expanded=True) as status:
         try:
-            result = _analyze_cached(domain)
+            result = _analyze_with_progress(domain, status)
+            status.update(label=f"Ready: {domain}", state="complete", expanded=False)
         except Exception as e:  # noqa: BLE001
+            status.update(label=f"Error on {domain}", state="error")
             st.error(f"Pipeline error: {e.__class__.__name__}: {e}")
             st.stop()
 
@@ -444,8 +576,9 @@ if submitted:
                     )
 
     st.caption(
-        "Pool is refreshed hourly. Per-visitor analysis cached for 24h. "
-        "Signals come from Greenhouse + Ashby + GitHub + SEC EDGAR + news RSS."
+        "Pool is refreshed hourly · per-visitor analysis cached 24h. "
+        "Signals: Greenhouse + Ashby + GitHub + SEC EDGAR + news RSS + Hacker News + Product Hunt. "
+        "Name→domain resolved via Clearbit Autocomplete."
     )
 else:
     st.caption("Output: 3-5 lead accounts ranked by the ICP inferred from your public site, each with its full signal list. No cold emails generated.")
