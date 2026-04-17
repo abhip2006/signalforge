@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -12,7 +12,7 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-class SignalKind(str, Enum):
+class SignalKind(StrEnum):
     HIRING = "hiring"
     FUNDING = "funding"
     EXEC_CHANGE = "exec_change"
@@ -94,7 +94,7 @@ class ResearchBrief(BaseModel):
     model: str = ""
 
 
-class DraftKind(str, Enum):
+class DraftKind(StrEnum):
     OPENER = "opener"
     FOLLOW_UP = "follow_up"
     LINKEDIN_NOTE = "linkedin_note"
