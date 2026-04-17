@@ -33,3 +33,5 @@ cache/
 .idea/
 .vscode/
 *.swp
+# ignore stray SQLite WAL files
+storage.sqlite3*
