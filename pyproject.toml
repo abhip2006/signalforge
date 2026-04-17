@@ -1,0 +1,69 @@
+[project]
+name = "signalforge"
+version = "0.1.0"
+description = "Open-source signal-driven outbound engine for GTM teams, with a reply-quality eval harness."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Abhinav Penagalapati", email = "abhip@berkeley.edu" }]
+
+dependencies = [
+    "anthropic>=0.42.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.7.0",
+    "pyyaml>=6.0",
+    "typer>=0.12.0",
+    "rich>=13.7.0",
+    "tenacity>=9.0.0",
+    "python-dotenv>=1.0.0",
+    "jinja2>=3.1.0",
+    "feedparser>=6.0.11",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "ruff>=0.6.0",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+signalforge = "signalforge.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["signalforge"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "PL"]
+# Keep strict on real problems, relax cosmetic/opinionated ones:
+# PLR0913/2004: arg-count / magic-value nags (legitimate in data pipelines)
+# PLR0911/0912/0915: too-many-returns/branches/statements — orchestrators need them
+# PLC0415: import-outside-top-level — lazy imports break cycles in this package
+# PLW0603: global cache is explicit and documented (SEC ticker map)
+# B008: typer.Option(...) as default is the documented pattern
+# PLW3301: nested min/max is sometimes the clearest phrasing
+ignore = [
+    "PLR0913", "PLR2004",
+    "PLR0911", "PLR0912", "PLR0915",
+    "PLC0415", "PLW0603", "B008", "PLW3301",
+    "E501",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "unit: fast deterministic unit tests (default)",
+    "integration: requires network or API keys",
+    "llm: hits Claude; gated behind ANTHROPIC_API_KEY",
+]

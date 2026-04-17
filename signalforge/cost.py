@@ -1,0 +1,130 @@
+"""Token + cost ledger.
+
+Every Claude call records a UsageEvent. The process-wide Ledger aggregates
+so we can surface cost-per-run, cache hit rate, and per-step cost in the
+final CLI summary. Without this, the cost of "add another regen attempt"
+is invisible — and that's how LLM pipelines quietly cost $1,000/day.
+
+Pricing (per 1M tokens, as of 2026-Q1). Override via env if they change.
+"""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass, field
+from typing import Any
+
+# Pricing in USD per 1M tokens: (input, output, cache_write, cache_read)
+# cache_write ≈ 1.25× input, cache_read ≈ 0.1× input
+_DEFAULT_PRICING: dict[str, tuple[float, float, float, float]] = {
+    "claude-opus-4-7":            (15.0,  75.0, 18.75, 1.50),
+    "claude-opus-4-6":            (15.0,  75.0, 18.75, 1.50),
+    "claude-sonnet-4-6":          ( 3.0,  15.0,  3.75, 0.30),
+    "claude-haiku-4-5-20251001":  ( 1.0,   5.0,  1.25, 0.10),
+    "claude-haiku-4-5":           ( 1.0,   5.0,  1.25, 0.10),
+}
+
+
+def _pricing_for(model: str) -> tuple[float, float, float, float]:
+    for key, px in _DEFAULT_PRICING.items():
+        if model.startswith(key) or key.startswith(model):
+            return px
+    # Unknown model — assume Sonnet-tier so the number isn't suspiciously small.
+    return _DEFAULT_PRICING["claude-sonnet-4-6"]
+
+
+@dataclass(frozen=True)
+class UsageEvent:
+    step: str                         # "brief" | "draft" | "judge" | "follow_up" | "bench"
+    model: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+    cache_read_input_tokens: int = 0
+
+    @property
+    def cost_usd(self) -> float:
+        inp_px, out_px, cw_px, cr_px = _pricing_for(self.model)
+        return (
+            self.input_tokens * inp_px / 1_000_000
+            + self.output_tokens * out_px / 1_000_000
+            + self.cache_creation_input_tokens * cw_px / 1_000_000
+            + self.cache_read_input_tokens * cr_px / 1_000_000
+        )
+
+
+@dataclass
+class Ledger:
+    events: list[UsageEvent] = field(default_factory=list)
+
+    def record(self, step: str, model: str, usage: Any) -> UsageEvent:
+        """Record from an Anthropic Usage object (or dict-like)."""
+        if usage is None:
+            return UsageEvent(step=step, model=model)
+
+        def _get(attr: str, default: int = 0) -> int:
+            v = getattr(usage, attr, None)
+            if v is None and isinstance(usage, dict):
+                v = usage.get(attr)
+            return int(v or default)
+
+        ev = UsageEvent(
+            step=step,
+            model=model,
+            input_tokens=_get("input_tokens"),
+            output_tokens=_get("output_tokens"),
+            cache_creation_input_tokens=_get("cache_creation_input_tokens"),
+            cache_read_input_tokens=_get("cache_read_input_tokens"),
+        )
+        self.events.append(ev)
+        return ev
+
+    def reset(self) -> None:
+        self.events = []
+
+    @property
+    def total_cost_usd(self) -> float:
+        return sum(e.cost_usd for e in self.events)
+
+    @property
+    def total_input(self) -> int:
+        return sum(e.input_tokens for e in self.events)
+
+    @property
+    def total_output(self) -> int:
+        return sum(e.output_tokens for e in self.events)
+
+    @property
+    def total_cache_read(self) -> int:
+        return sum(e.cache_read_input_tokens for e in self.events)
+
+    @property
+    def total_cache_write(self) -> int:
+        return sum(e.cache_creation_input_tokens for e in self.events)
+
+    @property
+    def cache_hit_rate(self) -> float:
+        """cache_read / (cache_read + input + cache_write)."""
+        denom = self.total_cache_read + self.total_input + self.total_cache_write
+        return (self.total_cache_read / denom) if denom else 0.0
+
+    def by_step(self) -> dict[str, dict[str, float]]:
+        out: dict[str, dict[str, float]] = {}
+        for e in self.events:
+            row = out.setdefault(
+                e.step,
+                {"calls": 0, "input": 0, "output": 0, "cache_read": 0, "cost_usd": 0.0},
+            )
+            row["calls"] += 1
+            row["input"] += e.input_tokens
+            row["output"] += e.output_tokens
+            row["cache_read"] += e.cache_read_input_tokens
+            row["cost_usd"] += e.cost_usd
+        return out
+
+
+# Process-wide ledger. The orchestrator calls `reset()` at the start of each run.
+LEDGER = Ledger()
+
+
+def disabled() -> bool:
+    return os.environ.get("SIGNALFORGE_DISABLE_LEDGER", "").lower() in ("1", "true", "yes")

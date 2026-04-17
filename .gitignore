@@ -1,0 +1,35 @@
+# env
+.env
+.env.local
+.env.*.local
+
+# python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# user-copied config (keep the example; never commit the user's)
+icp.yaml
+
+# data (runtime outputs are not committed)
+data/
+*.db
+*.sqlite
+*.sqlite3
+runs/
+cache/
+.cache/
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp

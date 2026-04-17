@@ -1,0 +1,128 @@
+# Example ICP config — copy to icp.yaml and customize.
+#
+# Pitch: "Selling a developer-tooling product to Series A/B AI-native companies
+#         hiring their first SDR." Targeted at VP Eng / Head of AI personas.
+
+name: ai-native-series-ab-sdr-first-hire
+
+target_titles:
+  - VP Engineering
+  - Head of AI
+  - Head of Engineering
+  - CTO
+  - Director of Engineering
+
+firmographics:
+  headcount_range: [30, 250]
+  industries: [AI, Developer Tools, SaaS, Data Infrastructure]
+  geos: [US, CA, UK, DE]
+  company_stages: [Seed, Series A, Series B]
+
+# Relative weight of each signal kind when computing ICP score.
+# Weights are additive; final score is 0..100.
+signal_weights:
+  hiring: 30                 # hiring SDRs / GTM / data / platform engineers
+  funding: 25                # IPO prep + M&A + raises
+  exec_change: 20            # 8-K Item 5.02 + press mentions
+  product_launch: 12
+  press: 10
+  github_activity: 10
+  earnings: 5
+  tech_stack: 0              # only used if a specific stack match is configured
+  filing: 3
+
+# Accounts below this score get enriched but no drafts.
+min_icp_score: 55
+
+tone: direct   # direct | warm | formal
+
+sender:
+  name: Abhinav Penagalapati
+  title: GTM Engineer
+  company: SignalForge (demo)
+  calendly: https://cal.com/abhip
+  email: abhip@berkeley.edu
+
+# Which signal sources to run, with per-source config.
+# Any source without its config key or required API key is skipped silently.
+sources:
+  greenhouse:
+    enabled: true
+    # List of Greenhouse board tokens (public; no auth required).
+    # Find them at https://boards.greenhouse.io/<token> or check a company's careers page URL.
+    boards:
+      - anthropic
+      - scaleai
+      - openai
+      - perplexity
+      - glean
+      - cohere
+      - mistralai
+    hiring_keywords: [sdr, bdr, gtm, "go-to-market", revenue, sales development, growth, developer relations]
+
+  ashby:
+    enabled: true
+    # Ashby boards are at jobs.ashbyhq.com/<slug>
+    boards:
+      - notion
+      - ramp
+      - clay
+      - unify
+
+  lever:
+    enabled: false            # add boards if useful
+    boards: []
+
+  github:
+    enabled: true
+    # Orgs to watch for activity signals (new repos, contributor spikes).
+    # Requires GITHUB_TOKEN for higher rate limits.
+    orgs:
+      - anthropics
+      - scaleai
+      - clay-labs
+      - unifygtm
+
+  sec_edgar:
+    enabled: true
+    # Public-company tickers to watch for 8-K (exec changes, M&A), S-1, 10-K/Q.
+    # Signals emit with domain `<ticker>.sec` so your ICP signal_weights apply directly.
+    tickers:
+      - CRM              # Salesforce
+      - HUBS             # HubSpot
+      - RNG              # RingCentral
+    lookback_days: 90
+
+  exa:
+    enabled: false            # set true + EXA_API_KEY for neural press/funding search
+    companies:
+      - anthropic
+      - notion
+      - ramp
+      - clay
+    queries:
+      - "{company} raised funding"
+      - "{company} announces new round"
+      - "{company} launches new product"
+      - "{company} hires new executive"
+    lookback_days: 45
+    results_per_query: 3
+
+  news_rss:
+    enabled: true
+    # Optional: override with your own feed list. Defaults cover TechCrunch/Finsmes/HN.
+    # Match runs against the board tokens declared in greenhouse/ashby/lever.
+    match_boards:
+      - anthropic
+      - notion
+      - ramp
+      - clay
+      - unify
+      - openai
+      - perplexity
+
+# Draft configuration
+drafts:
+  max_variants_per_account: 3
+  regen_below_score: 70       # regenerate if eval harness returns overall < 70
+  regen_max_attempts: 2

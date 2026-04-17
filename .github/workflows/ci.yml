@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: install
+        run: uv sync --extra dev
+
+      - name: lint
+        run: uv run ruff check signalforge/ evals/ tests/
+
+      - name: unit tests
+        run: uv run pytest tests/ -q
+
+      # Deterministic regression — no API keys required, always runs.
+      - name: golden regression (deterministic)
+        run: uv run python evals/run_regression.py --deterministic-only
+
+      # LLM-judge regression runs only on pushes to main, where we have the secret.
+      - name: golden regression (full, LLM judge)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: uv run python evals/run_regression.py
