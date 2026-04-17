@@ -1,0 +1,313 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>SignalForge run 20260417-042035-b40304</title>
+<style>
+  body { font: 14px/1.5 -apple-system, system-ui, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; color: #111; }
+  h1, h2, h3 { margin: 1.2em 0 .4em; }
+  h1 { font-size: 1.5rem; }
+  .meta { color: #555; font-size: .9rem; }
+  .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: .75rem; margin-top: 1rem; }
+  .kpi { background: #f5f5f5; padding: .75rem; border-radius: 6px; }
+  .kpi .n { font-size: 1.4rem; font-weight: 600; }
+  .account { border: 1px solid #e5e5e5; border-radius: 8px; padding: 1rem; margin: .8rem 0; }
+  .score-pill { display: inline-block; padding: .1rem .5rem; border-radius: 12px; background: #eef; font-weight: 600; }
+  .score-hi { background: #d4f8d4; }
+  .score-md { background: #fdf6c5; }
+  .score-lo { background: #fadadd; }
+  .draft { background: #fafafa; padding: .6rem .8rem; border-left: 3px solid #888; margin: .5rem 0; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+  .dim { display: inline-block; font-size: .75rem; background: #eee; padding: .1rem .4rem; border-radius: 10px; margin-right: .3rem; }
+  .flag { color: #a00; font-size: .8rem; }
+  .signals { font-size: .82rem; color: #444; }
+  .signals li { margin: .1rem 0; }
+  details summary { cursor: pointer; color: #555; }
+  .demo-banner { background: #fffbdf; border: 1px solid #efe4a8; padding: .75rem 1rem; border-radius: 6px; margin-bottom: 1.25rem; font-size: .9rem; }
+  .demo-banner a { color: #0366d6; }
+</style>
+</head>
+<body>
+<div class="demo-banner">
+  <strong>SignalForge demo report.</strong>
+  Real output from a run against public Greenhouse / Ashby / GitHub / SEC EDGAR / news RSS feeds.
+  Every draft below was scored by the in-repo eval harness (deterministic + LLM judge + cliff penalties).
+  Source + docs: <a href="https://github.com/abhip2006/signalforge">github.com/abhip2006/signalforge</a>
+</div>
+<h1>SignalForge run <code>20260417-042035-b40304</code></h1>
+<div class="meta">started 2026-04-17 04:20:35.109058+00:00 · finished 2026-04-17 04:21:15.081029+00:00 · config hash <code>e47dfee69827</code></div>
+
+<div class="summary">
+  <div class="kpi"><div class="n">3</div><div>accounts</div></div>
+  <div class="kpi"><div class="n">83</div><div>signals</div></div>
+  <div class="kpi"><div class="n">3</div><div>drafts</div></div>
+  <div class="kpi"><div class="n">84.7</div><div>avg draft score</div></div>
+</div>
+
+<h2>Accounts (3)</h2>
+
+
+  <div class="account">
+    <h3>
+      Ramp
+      <span class="score-pill score-md">ICP 68</span>
+      <span class="score-pill score-hi">draft 89</span>
+    </h3>
+    <div class="meta"><code>ramp.com</code> · 12 signals</div>
+
+    <details open>
+      <summary><strong>Why now</strong> — Ramp is doubling down on GTM + growth engineering — internal AI agents already run lead-gen and sales ops</summary>
+      <p>Ramp is actively hiring across Growth Platform, GTM Platform Frontend, Product Growth, and an 'Agentic Operator, Growth Marketing' role, signaling investment in the engineering systems behind their go-to-market motion. Their careers page openly highlights internally-built agents that 'run their own lead-gen,' 'power our entire GTM team,' and a 'GTM brain used in every sales call' — meaning GTM engineering is a first-class discipline there, not a side project.</p>
+      
+      <ul class="signals">
+        <li>Saw the 'Agentic Operator, Growth Marketing' req alongside the Senior Engineer, GTM Platform Frontend role — curious how you're splitting agent ownership between growth and platform eng.</li><li>Your careers page calls out Parth G. building 'agents that power our entire GTM team' and Yash W. deploying 'agents that run their own lead-gen' — we build the upstream signal layer those agents consume.</li><li>Two SDR reqs open in Ontario plus a Senior Data Scientist, Growth — happy to share how other GTM-platform teams are feeding account signals into rep workflows before headcount ramps.</li>
+      </ul>
+      
+    </details>
+
+    <details>
+      <summary><strong>12 signals captured</strong></summary>
+      <ul class="signals">
+        
+          <li>[hiring · ashby · strength 0.50] <a href="https://jobs.ashbyhq.com/ramp/51acae48-933b-4c71-be48-3e9317cf3ab7">Hiring: Agentic Operator, Growth Marketing</a></li>
+        
+          <li>[hiring · ashby · strength 0.50] <a href="https://jobs.ashbyhq.com/ramp/e0b64893-0459-4d84-ac4f-7b50966ef024">Hiring: Product Manager | Growth</a></li>
+        
+          <li>[hiring · ashby · strength 0.50] <a href="https://jobs.ashbyhq.com/ramp/f5b60cf1-c0ec-42c1-89db-ece853e998ab">Hiring: Software Engineer, Growth Platform</a></li>
+        
+          <li>[hiring · ashby · strength 0.50] <a href="https://jobs.ashbyhq.com/ramp/0c9e3e0f-54df-4252-a17b-b506e954225b">Hiring: Software Engineer, Product Growth</a></li>
+        
+          <li>[hiring · ashby · strength 0.50] <a href="https://jobs.ashbyhq.com/ramp/41696f51-7b29-4e12-b528-46c2f6c4f5f7">Hiring: Senior Data Scientist | Growth</a></li>
+        
+          <li>[hiring · ashby · strength 0.85] <a href="https://jobs.ashbyhq.com/ramp/cce684de-191d-4a8a-bc42-7ded3ccd47af">Hiring: Sales Development Representative | Ontario, Canada</a></li>
+        
+          <li>[hiring · ashby · strength 0.85] <a href="https://jobs.ashbyhq.com/ramp/bd9e9159-6c35-4755-9a48-02cc96d5379d">Hiring: Associate, GTM Finance & Operations</a></li>
+        
+          <li>[hiring · ashby · strength 0.50] <a href="https://jobs.ashbyhq.com/ramp/8e91631a-7e69-4d76-a73b-de2f09d7de9f">Hiring: Growth Manager, Website CRO</a></li>
+        
+          <li>[hiring · ashby · strength 0.85] <a href="https://jobs.ashbyhq.com/ramp/add8bb4a-f618-44f9-9874-81b32d7d862b">Hiring: Sales Development Representative, Inbound | Ontario, Canada</a></li>
+        
+          <li>[hiring · ashby · strength 0.50] <a href="https://jobs.ashbyhq.com/ramp/3ce8d76b-0cfb-4dd5-b36b-de22c4bd85e9">Hiring: Channel Partner Manager | Venture Capital & Growth Equity</a></li>
+        
+          <li>[hiring · ashby · strength 0.85] <a href="https://jobs.ashbyhq.com/ramp/1540a41f-d88f-4c89-9b08-5b9fade1ee81">Hiring: Senior Software Engineer | GTM Platform, Frontend</a></li>
+        
+          <li>[hiring · ashby · strength 0.50] <a href="https://jobs.ashbyhq.com/ramp/8db155ca-7e13-4eed-9813-1b6b65d66158">Hiring: Senior Channel Partner Manager | Venture Capital & Growth Equity</a></li>
+        
+      </ul>
+    </details>
+
+    <details open>
+      <summary><strong>Best draft</strong> — before the Ontario SDR reqs close</summary>
+      <div class="draft">Two SDR reqs open in Ontario plus a Senior Data Scientist, Growth. Before that headcount lands, other GTM-platform teams are wiring account signals directly into rep workflows so new hires ramp on pre-qualified pipeline instead of raw lists.
+
+Worth 20 minutes to compare notes on how Ramp's routing it? https://cal.com/abhip
+
+— Abhinav, SignalForge</div>
+      <div>
+        
+          <span class="dim">signal_anchoring: 85</span>
+        
+          <span class="dim">length: 100</span>
+        
+          <span class="dim">single_cta: 100</span>
+        
+          <span class="dim">personalization: 72</span>
+        
+          <span class="dim">spam_triggers: 100</span>
+        
+          <span class="dim">tone: 88</span>
+        
+          <span class="dim">grammar: 95</span>
+        
+      </div>
+      <div class="flag">⚠ flagged: grammar:mis_cap:1</div>
+      <div class="meta">judge: Directly references Ontario SDR reqs + Senior Data Scientist role from brief. Mentions signal-layer + rep workflows showing company knowledge. Direct peer tone, brief CTA. Could quote 'agents that power our entire GTM team' for higher anchoring.</div>
+    </details>
+  </div>
+
+  <div class="account">
+    <h3>
+      Notion
+      <span class="score-pill score-hi">ICP 100</span>
+      <span class="score-pill score-hi">draft 83</span>
+    </h3>
+    <div class="meta"><code>notion.so</code> · 16 signals</div>
+
+    <details open>
+      <summary><strong>Why now</strong> — Notion is scaling GTM globally with Forward Deployed Engineers and multi-region SDR hiring</summary>
+      <p>Notion has at least 12 active GTM roles open on Ashby, including three Forward Deployed Engineer, GTM roles across US, DACH, and France, signaling a push to embed engineers directly with revenue teams. They're also hiring a Global Head of GTM Recruiting and SDRs in Japan and Korea, indicating aggressive international GTM buildout alongside their AI workspace and Agents launch.</p>
+      
+      <ul class="signals">
+        <li>Saw you're hiring Forward Deployed Engineers for GTM across US, DACH, and France simultaneously — curious how you're planning to ramp three FDE pods in parallel</li><li>The Global Head of GTM Recruiting req (strength 0.90 on our radar) suggests the SDR hiring in Tokyo and Korea is just the start — what's the headcount target?</li><li>With Enterprise Product Marketing and Revenue Enablement Program Manager EMEA both open, looks like the Notion Agents launch needs a GTM backbone fast</li>
+      </ul>
+      
+    </details>
+
+    <details>
+      <summary><strong>16 signals captured</strong></summary>
+      <ul class="signals">
+        
+          <li>[hiring · ashby · strength 0.85] <a href="https://jobs.ashbyhq.com/notion/c64a2cda-4c84-45bd-823d-f9141c316733">Hiring: Sales Development Representative, Japan</a></li>
+        
+          <li>[hiring · ashby · strength 0.85] <a href="https://jobs.ashbyhq.com/notion/10437426-14c8-4c45-8075-67959ce80393">Hiring: Forward Deployed Engineer, GTM</a></li>
+        
+          <li>[hiring · ashby · strength 0.85] <a href="https://jobs.ashbyhq.com/notion/5f986e92-f668-4c9b-8b13-3de9cfe737e2">Hiring: Enterprise Product Marketing, GTM</a></li>
+        
+          <li>[hiring · ashby · strength 0.85] <a href="https://jobs.ashbyhq.com/notion/6b702ebf-0829-4b0a-b103-fe9271708881">Hiring: GTM Recruiter, Tokyo</a></li>
+        
+          <li>[hiring · ashby · strength 0.85] <a href="https://jobs.ashbyhq.com/notion/d02d5ff4-fea3-4be8-b142-cb120e966399">Hiring: Manager, Sales Development</a></li>
+        
+          <li>[hiring · ashby · strength 0.50] <a href="https://jobs.ashbyhq.com/notion/9a050d73-7f93-4dc1-8b30-1eb1da15d696">Hiring: Revenue Enablement Program Manager, EMEA</a></li>
+        
+          <li>[hiring · ashby · strength 0.50] <a href="https://jobs.ashbyhq.com/notion/655b047b-5e58-4b0c-82f0-8c16b2c03318">Hiring: Data Engineer, Go-To-Market</a></li>
+        
+          <li>[hiring · ashby · strength 0.90] <a href="https://jobs.ashbyhq.com/notion/3a823e37-51f7-4130-9dc8-b15b2967c260">Hiring: Global Head of GTM Recruiting</a></li>
+        
+          <li>[hiring · ashby · strength 0.85] <a href="https://jobs.ashbyhq.com/notion/b50c884e-1170-46d2-ae4c-3f559d2c98c4">Hiring: Forward Deployed Engineer, GTM, DACH</a></li>
+        
+          <li>[hiring · ashby · strength 0.85] <a href="https://jobs.ashbyhq.com/notion/2ca618b4-2223-47ca-b1f0-84ac101fcd90">Hiring: Forward Deployed Engineer, GTM, France</a></li>
+        
+          <li>[hiring · ashby · strength 0.50] <a href="https://jobs.ashbyhq.com/notion/4de50892-302a-47cf-96b7-4cea4dacdc9a">Hiring: Account Executive, Business Growth Sales</a></li>
+        
+          <li>[hiring · ashby · strength 0.85] <a href="https://jobs.ashbyhq.com/notion/759a9c5a-cdd6-4d05-8eaf-e78eabc34293">Hiring: Sales Development Representative, Korea</a></li>
+        
+          <li>[hiring · ashby · strength 0.50] <a href="https://jobs.ashbyhq.com/notion/4d0862f2-f882-4291-a894-d3cdc303e4a6">Hiring: User Researcher, Growth</a></li>
+        
+          <li>[hiring · ashby · strength 0.85] <a href="https://jobs.ashbyhq.com/notion/1cd3f44f-aa30-44a6-a64b-c7bfc813eeb9">Hiring: Forward Deployed Engineer, GTM - Korea</a></li>
+        
+          <li>[hiring · ashby · strength 0.85] <a href="https://jobs.ashbyhq.com/notion/3336e944-0970-48ef-9a97-4ebd6656d0c2">Hiring: GTM AI + Innovation Manager</a></li>
+        
+          <li>[hiring · ashby · strength 0.50] <a href="https://jobs.ashbyhq.com/notion/898cad25-2709-4e69-85d3-8b68f4370538">Hiring: Marketing Specialist, Growth and Demand, EMEA</a></li>
+        
+      </ul>
+    </details>
+
+    <details open>
+      <summary><strong>Best draft</strong> — GTM backbone for the Agents launch</summary>
+      <div class="draft">Enterprise PMM and Revenue Enablement PM EMEA both open right as Notion Agents ships. That's a GTM backbone being assembled under launch pressure, and enablement usually lags product by a quarter when reqs open this late.
+
+I put together a one-pager on how three AI-native companies sequenced enablement around agent launches. Want me to send it over?</div>
+      <div>
+        
+          <span class="dim">signal_anchoring: 85</span>
+        
+          <span class="dim">length: 100</span>
+        
+          <span class="dim">single_cta: 100</span>
+        
+          <span class="dim">personalization: 45</span>
+        
+          <span class="dim">spam_triggers: 100</span>
+        
+          <span class="dim">tone: 75</span>
+        
+          <span class="dim">grammar: 100</span>
+        
+      </div>
+      
+      <div class="meta">judge: Anchors two specific open roles (Enterprise PMM, Revenue Enablement PM EMEA) with timing insight. Lacks mention of FDEs or multi-region hiring scale. Direct but leans slightly promotional with the offer. Missing company/role detail about recipient.</div>
+    </details>
+  </div>
+
+  <div class="account">
+    <h3>
+      Anthropic
+      <span class="score-pill score-hi">ICP 100</span>
+      <span class="score-pill score-hi">draft 82</span>
+    </h3>
+    <div class="meta"><code>anthropic.com</code> · 24 signals</div>
+
+    <details open>
+      <summary><strong>Why now</strong> — Anthropic is scaling a global GTM machine — EMEA/DACH ops, SDR managers, and regional Finance & Strategy all open at once</summary>
+      <p>Anthropic has 12+ concurrent GTM-adjacent roles open on Greenhouse, including GTM Strategy & Ops for EMEA and DACH, Sales Development Managers for EMEA and Enterprise, and Finance & Strategy GTM leads for India and Korea. The simultaneous build-out of regional GTM ops, SDR management, and revenue finance systems (Finance Systems Engineer, Revenue; Compute Cost of Revenue Accountant) signals an enterprise go-to-market scale-up, not a point hire. Commercial Counsel, GTM is also open, pointing to contract volume growth alongside headcount.</p>
+      
+      <ul class="signals">
+        <li>Saw you're hiring Manager, Sales Development for both EMEA and Enterprise at the same time — curious how you're planning to stand up SDR tooling and signal routing before those managers land.</li><li>Two GTM Strategy & Ops roles open (EMEA and DACH) plus Finance & Strategy GTM in India and Korea — that's a regional ops build-out; worth comparing notes on how new GTM orgs are wiring account research from day one.</li><li>The Finance Systems Engineer, Revenue + Compute Cost of Revenue Accountant combo suggests you're rebuilding revenue plumbing — happy to share what other frontier-model GTM teams did here.</li>
+      </ul>
+      
+    </details>
+
+    <details>
+      <summary><strong>24 signals captured</strong></summary>
+      <ul class="signals">
+        
+          <li>[hiring · greenhouse · strength 0.90] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5074052008">Hiring: Commercial Counsel, GTM</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.70] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5128198008">Hiring: Compute Cost of Revenue Accountant</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.90] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5135964008">Hiring: Finance & Strategy, GTM - India</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.90] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5079133008">Hiring: Finance & Strategy, GTM - Korea</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.70] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5186669008">Hiring: Finance Systems Engineer, Revenue</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.70] <a href="https://job-boards.greenhouse.io/anthropic/jobs/4423394008">Hiring: Growth Account Executive, Startups</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.90] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5121572008">Hiring: GTM Strategy & Operations (Enterprise), DACH</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.90] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5005519008">Hiring: GTM Strategy & Operations (Enterprise) - EMEA</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.70] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5042447008">Hiring: Manager, Account Executive (Growth Startup Sales)</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.70] <a href="https://job-boards.greenhouse.io/anthropic/jobs/4976328008">Hiring: Manager, Growth Account Executive (Startups)</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.90] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5121912008">Hiring: Manager, Sales Development - EMEA</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.90] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5095484008">Hiring: Manager, Sales Development (Enterprise)</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.90] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5099163008">Hiring: Manager, Sales Development (Startups & Commercial)</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.70] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5181852008">Hiring: Product Manager, API Growth</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.70] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5153924008">Hiring: Product Manager, Multi-Cloud Growth - Google</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.70] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5189205008">Hiring: Revenue Strategy & Operations</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.70] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5189196008">Hiring: Revenue Strategy & Operations Lead</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.70] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5016171008">Hiring: Revenue Strategy & Operations Lead, Japan</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.70] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5076754008">Hiring: Senior Manager, Revenue Accounting</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.70] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5171946008">Hiring: Senior Manager, Revenue Accounting - New Product Introduction</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.70] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5125290008">Hiring: Senior Manager, Revenue Accounting – Order Management & Billing</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.70] <a href="https://job-boards.greenhouse.io/anthropic/jobs/5077106008">Hiring: Senior Manager, Technical Revenue Accounting</a></li>
+        
+          <li>[hiring · greenhouse · strength 0.70] <a href="https://job-boards.greenhouse.io/anthropic/jobs/4979834008">Hiring: Strategic Growth Account Executive, Startups</a></li>
+        
+          <li>[funding · news_rss · strength 0.85] <a href="https://techcrunch.com/2026/04/15/anthropic-shrugs-off-vc-funding-offers-valuing-it-at-800b-for-now/">Anthropic shrugs off VC funding offers valuing it at $800B+, for now</a></li>
+        
+      </ul>
+    </details>
+
+    <details open>
+      <summary><strong>Best draft</strong> — Finance Systems Engineer + Compute COGS</summary>
+      <div class="draft">Finance Systems Engineer, Revenue and Compute Cost of Revenue Accountant open at the same time tells me you're rebuilding revenue plumbing alongside the GTM scale-up, not patching it.
+
+I put together a short memo on how two other frontier-model GTM orgs sequenced this (what they built in-house vs. bought). Want me to send it over?</div>
+      <div>
+        
+          <span class="dim">signal_anchoring: 95</span>
+        
+          <span class="dim">length: 100</span>
+        
+          <span class="dim">single_cta: 100</span>
+        
+          <span class="dim">personalization: 25</span>
+        
+          <span class="dim">spam_triggers: 100</span>
+        
+          <span class="dim">tone: 85</span>
+        
+          <span class="dim">grammar: 95</span>
+        
+      </div>
+      <div class="flag">⚠ flagged: grammar:mis_cap:1</div>
+      <div class="meta">judge: Directly quotes specific roles from signal (Finance Systems Engineer, Revenue + Compute Cost of Revenue Accountant). Tone is peer-direct. Lacks account details beyond the signal itself.</div>
+    </details>
+  </div>
+
+
+</body>
+</html>
