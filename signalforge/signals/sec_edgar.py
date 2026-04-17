@@ -22,6 +22,42 @@ from signalforge.signals.base import SourceContext, http_get_json, warn
 USER_AGENT = "signalforge/0.1 (abhip@berkeley.edu)"
 _TICKER_CACHE: dict[str, dict[str, Any]] | None = None
 
+# Ticker → (canonical domain, display name). Keeps SEC filings on the SAME
+# account as the Greenhouse / Ashby / news signals for the same company,
+# instead of orphaning them under a ticker-based pseudo-domain.
+_TICKER_TO_COMPANY: dict[str, tuple[str, str]] = {
+    # Security vendors
+    "OKTA": ("okta.com", "Okta"),
+    "PANW": ("paloaltonetworks.com", "Palo Alto Networks"),
+    "CRWD": ("crowdstrike.com", "CrowdStrike"),
+    "ZS":   ("zscaler.com", "Zscaler"),
+    "S":    ("sentinelone.com", "SentinelOne"),
+    "FTNT": ("fortinet.com", "Fortinet"),
+    # Dev infra
+    "NET":  ("cloudflare.com", "Cloudflare"),
+    "DDOG": ("datadoghq.com", "Datadog"),
+    "MDB":  ("mongodb.com", "MongoDB"),
+    "SNOW": ("snowflake.com", "Snowflake"),
+    "NOW":  ("servicenow.com", "ServiceNow"),
+    "GTLB": ("gitlab.com", "GitLab"),
+    "FROG": ("jfrog.com", "JFrog"),
+    # Original SaaS
+    "CRM":  ("salesforce.com", "Salesforce"),
+    "HUBS": ("hubspot.com", "HubSpot"),
+    "RNG":  ("ringcentral.com", "RingCentral"),
+    # Enterprise buyers — finance
+    "JPM":  ("jpmorganchase.com", "JPMorgan Chase"),
+    "GS":   ("goldmansachs.com", "Goldman Sachs"),
+    "BAC":  ("bankofamerica.com", "Bank of America"),
+    "WFC":  ("wellsfargo.com", "Wells Fargo"),
+    "MS":   ("morganstanley.com", "Morgan Stanley"),
+    # Enterprise buyers — healthcare
+    "UNH":  ("unitedhealthgroup.com", "UnitedHealth Group"),
+    "CVS":  ("cvshealth.com", "CVS Health"),
+    "ELV":  ("elevancehealth.com", "Elevance Health"),
+    "HUM":  ("humana.com", "Humana"),
+}
+
 
 class SecEdgarSource:
     name = "sec_edgar"
@@ -112,7 +148,16 @@ async def _fetch_company_signals(
     items: list[str] = recent.get("items") or []
 
     cutoff = datetime.now(UTC).date().toordinal() - lookback_days
-    company_domain = f"{ticker.lower()}.sec"
+    # Unify with the canonical company domain if we know it, so SEC filings
+    # merge with Greenhouse/Ashby/GitHub/HN signals on the same account
+    # during scoring. Fallback to a ticker-based pseudo-domain.
+    canonical = _TICKER_TO_COMPANY.get(ticker.upper())
+    if canonical:
+        company_domain = canonical[0]
+        company_name = canonical[1]
+    else:
+        company_domain = f"{ticker.lower()}.sec"
+        company_name = title
     signals: list[Signal] = []
     for i, form in enumerate(forms):
         try:
@@ -134,7 +179,7 @@ async def _fetch_company_signals(
                 kind=kind,
                 source="sec_edgar",
                 company_domain=company_domain,
-                company_name=title,
+                company_name=company_name,
                 title=f"{form} ({descriptor})",
                 url=filing_url,
                 observed_at=datetime(d.year, d.month, d.day, tzinfo=UTC),

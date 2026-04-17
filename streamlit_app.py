@@ -1058,6 +1058,38 @@ if submitted:
 """
 
     # § 02 · Dispatches — right column, natural-scroll list of leads.
+    # Render priority: scarce-but-high-value kinds first, hiring last. This
+    # prevents ATS volume from burying funding / exec / press / github /
+    # filing signals in the top-N shown per lead.
+    _KIND_PRIORITY = (
+        "funding", "exec_change", "product_launch", "press",
+        "earnings", "github_activity", "filing", "tech_stack",
+        "hiring",
+    )
+
+    def _diversify(signals: list[dict], limit: int = 10) -> list[dict]:
+        """Round-robin by kind in _KIND_PRIORITY order so the top-N shown
+        reflects signal mix, not raw volume. Within each kind, strongest first."""
+        from collections import defaultdict
+        by_kind: dict[str, list[dict]] = defaultdict(list)
+        for s in signals:
+            by_kind[s["kind"]].append(s)
+        for bucket in by_kind.values():
+            bucket.sort(key=lambda x: x.get("strength", 0.0), reverse=True)
+        out: list[dict] = []
+        while len(out) < limit:
+            progressed = False
+            for k in _KIND_PRIORITY:
+                bucket = by_kind.get(k)
+                if bucket:
+                    out.append(bucket.pop(0))
+                    progressed = True
+                    if len(out) >= limit:
+                        break
+            if not progressed:
+                break
+        return out
+
     lead_blocks: list[str] = []
     for rank, lead in enumerate(leads, 1):
         is_top = rank == 1
@@ -1066,7 +1098,7 @@ if submitted:
             if is_top else f"— Dispatch {rank:02d} —"
         )
         dispatches: list[str] = []
-        shown = lead["signals"][:10]
+        shown = _diversify(lead["signals"], limit=10)
         for s in shown:
             byline = f'{s["source"].upper()} · {s["kind"].replace("_", " ").upper()} · {s["strength"]:.2f}'
             if s["url"]:
