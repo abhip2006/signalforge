@@ -58,7 +58,7 @@ If you're hiring GTM engineers, the code here demonstrates:
 
 ```bash
 # 1. clone + install
-git clone https://github.com/abhinavpenagalapati/signalforge
+git clone https://github.com/abhip2006/signalforge
 cd signalforge
 uv sync
 
