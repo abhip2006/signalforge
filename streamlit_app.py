@@ -22,6 +22,7 @@ import os
 import re
 import time
 from collections import defaultdict
+from datetime import datetime as _dt
 from textwrap import dedent
 from urllib.parse import urlparse
 
@@ -44,7 +45,376 @@ LLM_BACKEND = os.environ.get("LLM_BACKEND", "anthropic").lower()
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")
 
-st.set_page_config(page_title="SignalForge — live GTM lead demo", page_icon="🔍", layout="wide")
+st.set_page_config(
+    page_title="SignalForge — Issue No. 01",
+    page_icon="§",
+    layout="centered",
+    initial_sidebar_state="collapsed",
+)
+
+
+# ---------- editorial stylesheet --------------------------------------------
+# A cream-paper periodical dropped onto Streamlit's component set. The CSS
+# targets Streamlit's internal data-testid hooks to replace the defaults
+# (blue primary, sans-serif body, rounded pills) with an ink-on-cream
+# editorial system — Fraunces for display, IBM Plex Sans for body,
+# IBM Plex Mono for § numbers and wire-service bylines.
+_STYLE = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,300;1,9..144,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --paper: #f7f3ea;
+  --paper-2: #efeadf;
+  --paper-3: #e7dfd0;
+  --ink: #1a1814;
+  --ink-2: #403a32;
+  --ink-3: #827868;
+  --ink-4: #a79d8d;
+  --rule: rgba(26, 24, 20, 0.12);
+  --rule-2: rgba(26, 24, 20, 0.22);
+  --carmine: #9c3324;
+  --serif: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+  --sans: 'IBM Plex Sans', -apple-system, system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html, body, [data-testid="stAppViewContainer"], .stApp {
+  background: var(--paper) !important;
+  color: var(--ink);
+  font-family: var(--sans);
+}
+.main .block-container {
+  max-width: 780px;
+  padding-top: 3rem;
+  padding-bottom: 4rem;
+}
+
+/* Strip Streamlit's chrome */
+header[data-testid="stHeader"] { background: transparent !important; height: 0 !important; }
+footer { visibility: hidden; }
+#MainMenu { visibility: hidden; }
+
+/* ---------- Masthead --------------------------------------------------- */
+.sf-top-rule { height: 3px !important; background: var(--ink) !important; margin: 0 0 24px !important; width: 100% !important; }
+.sf-mast-kicker {
+  font-family: var(--mono) !important;
+  font-size: 10.5px !important;
+  letter-spacing: 0.14em !important;
+  text-transform: uppercase !important;
+  color: var(--ink-3) !important;
+  display: flex !important; justify-content: space-between !important; align-items: center !important;
+  margin-bottom: 32px !important;
+}
+.sf-mast-title {
+  font-family: var(--serif) !important;
+  font-weight: 400 !important;
+  font-size: 64px !important;
+  line-height: 0.98 !important;
+  letter-spacing: -0.015em !important;
+  color: var(--ink) !important;
+  margin: 0 0 24px !important;
+  font-variation-settings: "opsz" 144 !important;
+}
+.sf-mast-title em {
+  font-style: italic !important;
+  font-weight: 300 !important;
+  color: var(--ink-2) !important;
+}
+.sf-lede {
+  font-family: var(--serif) !important;
+  font-weight: 300 !important;
+  font-size: 19px !important;
+  line-height: 1.55 !important;
+  color: var(--ink-2) !important;
+  max-width: 54ch !important;
+  margin: 0 0 40px !important;
+}
+.sf-lede em { font-style: italic !important; color: var(--carmine) !important; }
+
+/* ---------- Form ------------------------------------------------------- */
+[data-testid="stForm"] {
+  border: none !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+[data-testid="stTextInput"] label,
+[data-testid="stTextInput"] div[data-baseweb="form-control-message"] { display: none !important; }
+[data-testid="stTextInput"] > div { background: transparent !important; }
+[data-testid="stTextInput"] div[data-baseweb="input"],
+[data-testid="stTextInput"] div[data-baseweb="base-input"] {
+  background: var(--paper-2) !important;
+  border: 1px solid var(--rule-2) !important;
+  border-radius: 0 !important;
+  transition: border-color 160ms ease;
+}
+[data-testid="stTextInput"] input {
+  background: transparent !important;
+  color: var(--ink) !important;
+  font-family: var(--sans) !important;
+  font-size: 15px !important;
+  padding: 14px 16px !important;
+  caret-color: var(--ink);
+}
+[data-testid="stTextInput"] div[data-baseweb="input"]:focus-within {
+  border-color: var(--ink) !important;
+  box-shadow: none !important;
+}
+[data-testid="stTextInput"] input::placeholder { color: var(--ink-4) !important; }
+
+.stButton > button, [data-testid="stFormSubmitButton"] button {
+  background: var(--ink) !important;
+  color: var(--paper) !important;
+  border: 1px solid var(--ink) !important;
+  border-radius: 0 !important;
+  padding: 12px 22px !important;
+  font-family: var(--mono) !important;
+  font-size: 10.5px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.14em !important;
+  text-transform: uppercase !important;
+  box-shadow: none !important;
+  transition: background 160ms ease, color 160ms ease;
+}
+.stButton > button:hover, [data-testid="stFormSubmitButton"] button:hover {
+  background: var(--paper) !important;
+  color: var(--ink) !important;
+}
+
+/* ---------- Section head ----------------------------------------------- */
+.sf-sec {
+  margin-top: 56px !important;
+  padding-top: 24px !important;
+  border-top: 1px solid var(--rule) !important;
+}
+.sf-sec-head {
+  display: flex !important; align-items: baseline !important; gap: 16px !important;
+  margin-bottom: 24px !important;
+}
+.sf-sec-num {
+  font-family: var(--mono) !important;
+  font-size: 11px !important;
+  letter-spacing: 0.14em !important;
+  text-transform: uppercase !important;
+  color: var(--ink-3) !important;
+  min-width: 56px !important;
+}
+.sf-sec-title {
+  font-family: var(--serif) !important;
+  font-weight: 400 !important;
+  font-style: italic !important;
+  font-size: 28px !important;
+  line-height: 1.2 !important;
+  color: var(--ink) !important;
+  margin: 0 !important;
+}
+
+/* ---------- The brief (§ 01) ------------------------------------------ */
+.sf-brief-summary {
+  font-family: var(--serif) !important;
+  font-weight: 300 !important;
+  font-size: 22px !important;
+  line-height: 1.45 !important;
+  color: var(--ink) !important;
+  margin: 0 0 32px !important;
+  max-width: 60ch !important;
+}
+.sf-brief-grid {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 40px !important;
+  border-top: 1px solid var(--rule) !important;
+  padding-top: 20px !important;
+}
+.sf-brief-label {
+  font-family: var(--mono) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.14em !important;
+  text-transform: uppercase !important;
+  color: var(--ink-3) !important;
+  margin: 0 0 12px !important;
+}
+.sf-title-list {
+  list-style: none !important; padding: 0 !important; margin: 0 !important;
+  font-family: var(--sans) !important; font-size: 15px !important; line-height: 1.9 !important;
+  color: var(--ink) !important;
+}
+.sf-title-list li { list-style: none !important; }
+.sf-title-list li::before {
+  content: "— " !important; color: var(--ink-4) !important;
+}
+.sf-weight-row {
+  display: grid !important;
+  grid-template-columns: 1fr 40px !important;
+  align-items: baseline !important;
+  font-family: var(--mono) !important;
+  font-size: 12px !important;
+  color: var(--ink-2) !important;
+  padding: 6px 0 !important;
+  border-bottom: 1px dotted var(--rule) !important;
+}
+.sf-weight-row:last-child { border-bottom: none !important; }
+.sf-weight-label {
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+}
+.sf-weight-val {
+  font-weight: 500 !important;
+  color: var(--ink) !important;
+  text-align: right !important;
+  font-variant-numeric: tabular-nums !important;
+}
+.sf-why {
+  font-family: var(--serif) !important;
+  font-style: italic !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  color: var(--ink-3) !important;
+  margin-top: 20px !important;
+  padding-left: 16px !important;
+  border-left: 1px solid var(--rule-2) !important;
+  max-width: 60ch !important;
+}
+
+/* ---------- Dispatches (§ 02) ----------------------------------------- */
+.sf-lead {
+  padding: 32px 0 28px !important;
+  border-top: 1px solid var(--rule) !important;
+}
+.sf-lead:first-of-type { border-top: 1px solid var(--rule-2) !important; }
+.sf-lead-num {
+  font-family: var(--mono) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.18em !important;
+  text-transform: uppercase !important;
+  color: var(--ink-3) !important;
+  margin-bottom: 4px !important;
+}
+.sf-lead-num .carmine { color: var(--carmine) !important; }
+.sf-lead-name {
+  font-family: var(--serif) !important;
+  font-weight: 400 !important;
+  font-size: 32px !important;
+  line-height: 1.05 !important;
+  color: var(--ink) !important;
+  margin: 0 0 10px !important;
+  font-variation-settings: "opsz" 72 !important;
+}
+.sf-lead-meta {
+  font-family: var(--mono) !important;
+  font-size: 10.5px !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+  color: var(--ink-3) !important;
+  margin-bottom: 18px !important;
+}
+.sf-lead-meta .icp {
+  color: var(--ink) !important;
+  font-weight: 500 !important;
+  font-variant-numeric: tabular-nums !important;
+}
+.sf-dispatches { margin-top: 6px !important; }
+.sf-dispatch {
+  display: grid !important;
+  grid-template-columns: 180px 1fr !important;
+  gap: 18px !important;
+  padding: 8px 0 !important;
+  border-top: 1px dotted var(--rule) !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  color: var(--ink-2) !important;
+}
+.sf-dispatch:first-of-type { border-top: none !important; }
+.sf-dispatch .byline {
+  font-family: var(--mono) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.1em !important;
+  text-transform: uppercase !important;
+  color: var(--ink-3) !important;
+  font-variant-numeric: tabular-nums !important;
+  padding-top: 3px !important;
+}
+.sf-dispatch .body {
+  font-family: var(--sans) !important;
+  color: var(--ink) !important;
+}
+.sf-dispatch .body a {
+  color: var(--ink) !important;
+  text-decoration: none !important;
+  border-bottom: 1px solid var(--rule-2) !important;
+  transition: border-color 140ms ease !important;
+}
+.sf-dispatch .body a:hover { border-color: var(--ink) !important; }
+.sf-dispatch-more {
+  font-family: var(--mono) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.1em !important;
+  text-transform: uppercase !important;
+  color: var(--ink-3) !important;
+  padding-top: 10px !important;
+  grid-column: 2 !important;
+}
+
+/* ---------- Colophon --------------------------------------------------- */
+.sf-colophon {
+  margin-top: 72px !important;
+  padding-top: 24px !important;
+  border-top: 1px solid var(--rule) !important;
+  font-family: var(--mono) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.1em !important;
+  text-transform: uppercase !important;
+  color: var(--ink-3) !important;
+  line-height: 1.8 !important;
+}
+.sf-colophon em { color: var(--ink) !important; font-style: normal !important; }
+.sf-colophon a { color: var(--ink) !important; text-decoration: none !important; border-bottom: 1px solid var(--rule-2) !important; }
+
+/* ---------- Streamlit overrides: alerts, status, captions ------------ */
+[data-testid="stAlert"],
+div[data-baseweb="notification"] {
+  border-radius: 0 !important;
+  background: var(--paper-2) !important;
+  border: 1px solid var(--rule-2) !important;
+  color: var(--ink) !important;
+  font-family: var(--sans) !important;
+  box-shadow: none !important;
+  padding: 14px 16px !important;
+}
+[data-testid="stAlert"] p,
+div[data-baseweb="notification"] p { color: var(--ink) !important; }
+
+[data-testid="stStatusWidget"], [data-testid="stStatus"] {
+  background: var(--paper-2) !important;
+  border: 1px solid var(--rule) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-family: var(--mono) !important;
+  font-size: 12px !important;
+  color: var(--ink-2) !important;
+}
+
+[data-testid="stCaptionContainer"], div[data-testid="stCaption"] {
+  color: var(--ink-3) !important;
+  font-family: var(--mono) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+}
+
+/* Removed spurious dividers */
+hr { border-color: var(--rule) !important; }
+
+/* Selection */
+::selection { background: var(--ink); color: var(--paper); }
+</style>
+"""
+
+
+def _inject_style() -> None:
+    # Streamlit rebuilds the DOM on every rerun, so the style block has to be
+    # injected on every call — not guarded by session state.
+    st.markdown(_STYLE, unsafe_allow_html=True)
 
 
 # ---------- candidate pool --------------------------------------------------
@@ -494,16 +864,34 @@ def _analyze_with_progress(visitor_domain: str, status) -> dict:
 
 # ---------- UI --------------------------------------------------------------
 
-st.title("🔍 SignalForge — live GTM lead demo")
-st.markdown(
-    "Enter a company domain. SignalForge scrapes its public context, infers the ICP, "
-    "then returns **3-5 lead accounts** from a curated pool — each with its full signal list. "
-    "[See the code](https://github.com/abhip2006/signalforge)."
+_inject_style()
+
+# ── Masthead ────────────────────────────────────────────────────────────────
+st.html(
+    f"""
+<div class="sf-top-rule"></div>
+<div class="sf-mast-kicker">
+  <span>SIGNALFORGE · ISSUE No. 01</span>
+  <span>{_dt.utcnow().strftime('%B %Y').upper()}</span>
+</div>
+<h1 class="sf-mast-title">The <em>dossier</em><br/>you'd write<br/>before the cold email.</h1>
+<p class="sf-lede">
+Type a company. SignalForge reads its public context, infers an <em>ideal customer profile</em>,
+and files five lead accounts from a curated pool — each with its full signal ledger.
+<br/><br/>
+No cold email is generated here. That's a different tool.
+</p>
+"""
 )
 
-with st.form("demo"):
-    raw_input = st.text_input("Your company domain or URL", placeholder="e.g. ramp.com", autocomplete="off")
-    submitted = st.form_submit_button("Find leads →", type="primary")
+with st.form("demo", clear_on_submit=False):
+    raw_input = st.text_input(
+        "domain",
+        placeholder="ramp.com  ·  Linear  ·  stripe",
+        label_visibility="collapsed",
+        autocomplete="off",
+    )
+    submitted = st.form_submit_button("File the request →")
 
 if submitted:
     resolved = _resolve_input(raw_input)
@@ -514,7 +902,9 @@ if submitted:
         st.stop()
     domain, display_hint = resolved
     if display_hint:
-        st.caption(f"Matched → **{display_hint}** ({domain})")
+        st.html(
+            f'<div class="sf-colophon" style="margin-top:12px;">Matched <em>{display_hint}</em> → {domain}</div>'
+        )
 
     now = time.time()
     last = st.session_state.get("last_run", 0)
@@ -523,62 +913,135 @@ if submitted:
         st.stop()
     st.session_state["last_run"] = now
 
-    with st.status(f"Running SignalForge on {domain}", expanded=True) as status:
+    with st.status(f"Filing on {domain}", expanded=True) as status:
         try:
             result = _analyze_with_progress(domain, status)
-            status.update(label=f"Ready: {domain}", state="complete", expanded=False)
+            status.update(label=f"Filed · {domain}", state="complete", expanded=False)
         except Exception as e:  # noqa: BLE001
-            status.update(label=f"Error on {domain}", state="error")
+            status.update(label=f"Failed · {domain}", state="error")
             st.error(f"Pipeline error: {e.__class__.__name__}: {e}")
             st.stop()
 
-    st.success(f"Inferred ICP for {domain}")
-
     inf = result["inferred"] or {}
-    st.markdown(f"**What you do (as inferred):** {inf.get('company_summary', '—')}")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.caption("Target titles")
-        for t in inf.get("target_titles", [])[:6]:
-            st.markdown(f"- {t}")
-    with c2:
-        st.caption("Signal weights (what matters most for your sale)")
-        weights = inf.get("signal_weights") or {}
-        for k, v in sorted(weights.items(), key=lambda kv: kv[1], reverse=True):
-            st.markdown(f"- **{k}**: {v}")
-    if inf.get("why"):
-        st.caption(f"_Why these weights:_ {inf['why']}")
-
-    st.subheader(f"Top leads from pool of {result['pool_size']} signals across curated accounts")
+    weights = inf.get("signal_weights") or {}
     leads = result["leads"] or []
-    if not leads:
-        st.info("No leads matched. Try a different ICP-rich visitor domain or check back once the pool refreshes.")
-    for rank, lead in enumerate(leads, 1):
-        with st.container():
-            st.markdown(
-                f"### {rank}. {lead['name']}  "
-                f"<span style='color:#888;font-size:0.85em'>{lead['domain']} · ICP {lead['icp_score']:.0f}</span>",
-                unsafe_allow_html=True,
-            )
-            sig_count = len(lead["signals"])
-            st.caption(f"{sig_count} signals captured")
-            for s in lead["signals"]:
-                if s["url"]:
-                    st.markdown(
-                        f"- **[{s['kind']}]** <span style='color:#888'>{s['source']} · strength {s['strength']:.2f}</span> "
-                        f"— [{s['title']}]({s['url']})",
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    st.markdown(
-                        f"- **[{s['kind']}]** <span style='color:#888'>{s['source']}</span> — {s['title']}",
-                        unsafe_allow_html=True,
-                    )
 
-    st.caption(
-        "Pool is refreshed hourly · per-visitor analysis cached 24h. "
-        "Signals: Greenhouse + Ashby + GitHub + SEC EDGAR + news RSS + Hacker News + Product Hunt. "
-        "Name→domain resolved via Clearbit Autocomplete."
+    # ── § 01 · The brief ─────────────────────────────────────────────────
+    summary = (inf.get("company_summary") or "—").strip()
+    titles = inf.get("target_titles") or []
+    why = (inf.get("why") or "").strip()
+
+    title_li = "\n".join(f"<li>{t}</li>" for t in titles[:6]) or "<li>—</li>"
+    weight_rows = "\n".join(
+        f'<div class="sf-weight-row"><span class="sf-weight-label">{k}</span>'
+        f'<span class="sf-weight-val">{int(v):>2}</span></div>'
+        for k, v in sorted(weights.items(), key=lambda kv: kv[1], reverse=True)
+    ) or '<div class="sf-weight-row"><span class="sf-weight-label">—</span><span class="sf-weight-val">—</span></div>'
+    why_html = f'<p class="sf-why">{why}</p>' if why else ""
+
+    st.html(
+        f"""
+<section class="sf-sec">
+  <div class="sf-sec-head">
+    <div class="sf-sec-num">§ 01</div>
+    <h2 class="sf-sec-title">The brief</h2>
+  </div>
+  <p class="sf-brief-summary">{summary}</p>
+  <div class="sf-brief-grid">
+    <div>
+      <div class="sf-brief-label">Target titles</div>
+      <ul class="sf-title-list">{title_li}</ul>
+    </div>
+    <div>
+      <div class="sf-brief-label">Signal weights</div>
+      {weight_rows}
+    </div>
+  </div>
+  {why_html}
+</section>
+"""
     )
+
+    # ── § 02 · Dispatches ────────────────────────────────────────────────
+    st.html(
+        f"""
+<section class="sf-sec">
+  <div class="sf-sec-head">
+    <div class="sf-sec-num">§ 02</div>
+    <h2 class="sf-sec-title">Dispatches — top {len(leads)} of {result['pool_size']} pool signals</h2>
+  </div>
+</section>
+"""
+    )
+
+    if not leads:
+        st.info(
+            "No leads matched. Try a different visitor domain, or check back once the hourly pool refreshes."
+        )
+
+    for rank, lead in enumerate(leads, 1):
+        is_top = rank == 1
+        num_html = (
+            '<span class="carmine">— Dispatch 01 · top match —</span>'
+            if is_top else f"— Dispatch {rank:02d} —"
+        )
+        dispatches: list[str] = []
+        shown = lead["signals"][:10]
+        for s in shown:
+            byline = f'{s["source"].upper()} · {s["kind"].replace("_", " ").upper()} · {s["strength"]:.2f}'
+            if s["url"]:
+                body = f'<a href="{s["url"]}" target="_blank" rel="noopener">{s["title"]}</a>'
+            else:
+                body = s["title"]
+            dispatches.append(
+                f'<div class="sf-dispatch"><div class="byline">{byline}</div>'
+                f'<div class="body">{body}</div></div>'
+            )
+        extra = len(lead["signals"]) - len(shown)
+        more_html = (
+            f'<div class="sf-dispatch"><div></div>'
+            f'<div class="sf-dispatch-more">+ {extra} more on file</div></div>'
+            if extra > 0 else ""
+        )
+        st.html(
+            f"""
+<article class="sf-lead">
+  <div class="sf-lead-num">{num_html}</div>
+  <h3 class="sf-lead-name">{lead['name']}</h3>
+  <div class="sf-lead-meta">
+    {lead['domain']} &nbsp;·&nbsp; icp <span class="icp">{lead['icp_score']:.0f}</span>
+    &nbsp;·&nbsp; {len(lead['signals'])} signals on file
+  </div>
+  <div class="sf-dispatches">
+    {''.join(dispatches)}
+    {more_html}
+  </div>
+</article>
+"""
+        )
+
+    # ── Colophon ─────────────────────────────────────────────────────────
+    backend = OLLAMA_MODEL if LLM_BACKEND == "ollama" else "claude"
+    st.html(
+        f"""
+<div class="sf-colophon">
+  <em>Colophon.</em>
+  Inference ran on <em>{backend}</em>. Pool refreshed hourly · per-visitor file cached 24h.
+  Sources on file: Greenhouse · Ashby · Lever · GitHub · SEC EDGAR · News RSS · Hacker News · Product Hunt · Exa.
+  Name → domain via Clearbit Autocomplete.
+  Source code <a href="https://github.com/abhip2006/signalforge" target="_blank" rel="noopener">on the wire</a>.
+</div>
+"""
+    )
+
 else:
-    st.caption("Output: 3-5 lead accounts ranked by the ICP inferred from your public site, each with its full signal list. No cold emails generated.")
+    st.html(
+        """
+<div class="sf-colophon" style="margin-top:64px;">
+  <em>How this reads.</em>
+  §&nbsp;01 prints the brief — the ICP inferred from your public page.
+  §&nbsp;02 files up to five dispatches — lead accounts with their signal ledger.
+  Source code <a href="https://github.com/abhip2006/signalforge" target="_blank" rel="noopener">on the wire</a>.
+</div>
+"""
+    )

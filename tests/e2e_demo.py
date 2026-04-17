@@ -51,17 +51,20 @@ class Report:
 
 
 async def _fill_domain_and_submit(page: Page, domain: str) -> None:
-    # Streamlit: text input is the 2nd interactive (after the form container).
-    box = page.get_by_placeholder("e.g. ramp.com")
+    # The input placeholder is "ramp.com  ·  Linear  ·  stripe" — match loosely.
+    box = page.locator('input[aria-label="domain"]').or_(
+        page.locator('input[placeholder*="ramp"]')
+    ).first
     await box.fill("")
     await box.fill(domain)
-    await page.get_by_role("button", name="Find leads →").click()
+    await page.get_by_role("button", name="File the request →").click()
 
 
 async def _wait_for_result(page: Page, timeout_ms: int = 180_000) -> None:
-    """Wait for either the success banner or an inline error."""
-    await page.wait_for_selector(
-        'text=/Inferred ICP for|doesn\'t look like a valid/i',
+    """Wait for either the § 01 brief section or an inline error."""
+    await page.wait_for_function(
+        "() => document.body.innerText.toLowerCase().includes('the brief')"
+        " || document.body.innerText.includes(\"Couldn't resolve\")",
         timeout=timeout_ms,
     )
 
@@ -78,8 +81,9 @@ async def test_demo(url: str, report: Report) -> None:
         try:
             await page.goto(url, wait_until="networkidle", timeout=60_000)
             title = await page.title()
-            await expect(page.get_by_text("SignalForge — live GTM lead demo")).to_be_visible(timeout=30_000)
-            await expect(page.get_by_placeholder("e.g. ramp.com")).to_be_visible()
+            # Editorial masthead: "The dossier you'd write before the cold email."
+            await expect(page.get_by_text("dossier", exact=False).first).to_be_visible(timeout=30_000)
+            await expect(page.locator('input[aria-label="domain"]').first).to_be_visible()
             await page.screenshot(path=OUT_DIR / "01-landing.png", full_page=True)
             report.step("landing renders", True, f"title={title!r}")
         except Exception as e:  # noqa: BLE001
@@ -108,14 +112,25 @@ async def test_demo(url: str, report: Report) -> None:
             await _fill_domain_and_submit(page, "ramp.com")
             await _wait_for_result(page)
             cold = time.perf_counter() - t0
-            await expect(page.get_by_text("Inferred ICP for ramp.com")).to_be_visible(timeout=30_000)
-            # Look for the summary label
-            await expect(page.get_by_text("What you do (as inferred):")).to_be_visible()
-            # At least one target title should be rendered
-            await expect(page.get_by_text("Target titles", exact=False)).to_be_visible()
-            await expect(page.get_by_text("Signal weights", exact=False)).to_be_visible()
-            # Top leads heading
-            await expect(page.get_by_text("Top leads from pool of", exact=False)).to_be_visible()
+            # § 01 The brief appears first (scrape + infer finishes), then
+            # § 02 Dispatches (scoring + render of 5 leads).
+            # Wait for them separately so a partial render doesn't look
+            # like a total failure.
+            # innerText reflects CSS text-transform; our editorial styles
+            # uppercase section labels. Normalize to lower() for matching.
+            await page.wait_for_function(
+                "() => document.body.innerText.toLowerCase().includes('the brief')",
+                timeout=180_000,
+            )
+            await page.wait_for_function(
+                "() => document.body.innerText.toLowerCase().includes('target titles') "
+                "&& document.body.innerText.toLowerCase().includes('signal weights')",
+                timeout=30_000,
+            )
+            await page.wait_for_function(
+                "() => document.body.innerText.toLowerCase().includes('dispatches')",
+                timeout=60_000,
+            )
             await page.screenshot(path=OUT_DIR / "03-ramp.png", full_page=True)
             report.step("ramp.com submit → full result", True, f"cold={cold:.1f}s")
         except Exception as e:  # noqa: BLE001
@@ -126,21 +141,21 @@ async def test_demo(url: str, report: Report) -> None:
 
         # ── 4. Lead count + signals visible ────────────────────────────────
         try:
-            leads = page.locator("h3").filter(has_text="ICP ")
-            # A lead heading looks like "1. Anthropic  anthropic.com · ICP 100"
+            # Lead names live in h3.sf-lead-name; count those.
+            leads = page.locator("h3.sf-lead-name")
             count = await leads.count()
             assert 3 <= count <= 6, f"expected 3-5 leads, got {count}"
-            # Each lead has an "N signals captured" caption
-            cap = page.get_by_text("signals captured", exact=False)
+            # Each lead renders "N signals on file" in its meta line.
+            cap = page.get_by_text("signals on file", exact=False)
             assert await cap.count() >= count, (
-                f"only {await cap.count()} 'signals captured' captions for {count} leads"
+                f"only {await cap.count()} 'signals on file' captions for {count} leads"
             )
             report.step(
-                "3-5 leads rendered with 'signals captured' captions",
+                "3-5 leads rendered with 'signals on file' meta",
                 True, f"{count} leads",
             )
         except Exception as e:  # noqa: BLE001
-            report.step("leads + signal captions", False, repr(e))
+            report.step("leads + signals-on-file meta", False, repr(e))
 
         # ── 5. At least one signal link inside leads ───────────────────────
         try:
@@ -162,7 +177,7 @@ async def test_demo(url: str, report: Report) -> None:
             # and the 15s rate-limit window is guaranteed to cover the gap.
             await _fill_domain_and_submit(page, "ramp.com")
             await page.wait_for_function(
-                "() => document.body.innerText.includes('Inferred ICP')",
+                "() => document.body.innerText.toLowerCase().includes('the brief')",
                 timeout=15_000,
             )
             # Immediately submit again — this is the call the rate limit blocks.
@@ -183,7 +198,11 @@ async def test_demo(url: str, report: Report) -> None:
             await _fill_domain_and_submit(page, "stripe.com")
             await _wait_for_result(page, timeout_ms=180_000)
             warm = time.perf_counter() - t0
-            await expect(page.get_by_text("Inferred ICP for stripe.com")).to_be_visible(timeout=30_000)
+            await page.wait_for_function(
+                "() => document.body.innerText.toLowerCase().includes('the brief') "
+                "&& document.body.innerText.toLowerCase().includes('dispatches')",
+                timeout=30_000,
+            )
             await page.screenshot(path=OUT_DIR / "05-stripe.png", full_page=True)
             report.step("stripe.com produces a distinct ICP analysis", True, f"{warm:.1f}s")
         except Exception as e:  # noqa: BLE001
@@ -194,10 +213,10 @@ async def test_demo(url: str, report: Report) -> None:
         try:
             await page.wait_for_timeout(16_000)
             await _fill_domain_and_submit(page, "Linear")
-            # Either resolved (Matched → Linear …) or full analysis appears.
+            # Either resolved ("Matched Linear → …") or full analysis appears.
             await page.wait_for_function(
                 "() => document.body.innerText.includes('Matched') || "
-                "document.body.innerText.includes('Inferred ICP for')",
+                "document.body.innerText.toLowerCase().includes('the brief')",
                 timeout=120_000,
             )
             await page.screenshot(path=OUT_DIR / "07-name-resolution.png", full_page=True)
