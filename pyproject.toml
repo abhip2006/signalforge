@@ -68,3 +68,8 @@ markers = [
     "integration: requires network or API keys",
     "llm: hits Claude; gated behind ANTHROPIC_API_KEY",
 ]
+
+[dependency-groups]
+dev = [
+    "playwright>=1.58.0",
+]
