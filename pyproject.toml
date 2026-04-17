@@ -18,6 +18,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "jinja2>=3.1.0",
     "feedparser>=6.0.11",
+    "streamlit>=1.36.0",
 ]
 
 [project.optional-dependencies]
