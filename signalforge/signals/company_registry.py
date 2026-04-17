@@ -83,6 +83,27 @@ KNOWN: dict[str, tuple[str, str]] = {
     "dub": ("dub.co", "Dub"),
     # GitHub orgs
     "cohere-ai": ("cohere.com", "Cohere"),
+    # Added April 2026 pool expansion — enterprise security + scale SaaS
+    "okta": ("okta.com", "Okta"),
+    "zscaler": ("zscaler.com", "Zscaler"),
+    "cloudflare": ("cloudflare.com", "Cloudflare"),
+    "rubrik": ("rubrik.com", "Rubrik"),
+    "abnormalsecurity": ("abnormal.ai", "Abnormal Security"),
+    "datadog": ("datadoghq.com", "Datadog"),
+    "newrelic": ("newrelic.com", "New Relic"),
+    "gitlab": ("gitlab.com", "GitLab"),
+    "jfrog": ("jfrog.com", "JFrog"),
+    "snyk": ("snyk.io", "Snyk"),
+    "wiz": ("wiz.io", "Wiz"),
+    "1password": ("1password.com", "1Password"),
+    "semgrep": ("semgrep.dev", "Semgrep"),
+    "plaid": ("plaid.com", "Plaid"),
+    "loom": ("loom.com", "Loom"),
+    "stripe": ("stripe.com", "Stripe"),
+    "airbnb": ("airbnb.com", "Airbnb"),
+    "pinterest": ("pinterest.com", "Pinterest"),
+    "coinbase": ("coinbase.com", "Coinbase"),
+    "instacart": ("instacart.com", "Instacart"),
 }
 
 

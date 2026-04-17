@@ -22,7 +22,6 @@ import os
 import re
 import time
 from collections import defaultdict
-from datetime import datetime as _dt
 from textwrap import dedent
 from urllib.parse import urlparse
 
@@ -84,10 +83,25 @@ html, body, [data-testid="stAppViewContainer"], .stApp {
   color: var(--ink);
   font-family: var(--sans);
 }
-.main .block-container {
-  max-width: 780px;
-  padding-top: 3rem;
-  padding-bottom: 4rem;
+.main .block-container,
+[data-testid="stMainBlockContainer"],
+.stMainBlockContainer {
+  max-width: 1240px !important;
+  padding-top: 3rem !important;
+  padding-bottom: 4rem !important;
+}
+/* Keep masthead / form / status / colophon in a narrow editorial column
+   (~780px) even as the container widens. Only .sf-split uses the full
+   1240px to host the two-panel layout. */
+.sf-narrow, .sf-colophon { max-width: 780px; margin-left: auto !important; margin-right: auto !important; }
+[data-testid="stForm"] { max-width: 780px !important; margin-left: auto !important; margin-right: auto !important; }
+[data-testid="stStatus"],
+[data-testid="stStatusWidget"],
+[data-testid="stAlert"],
+div[data-baseweb="notification"] {
+  max-width: 780px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
 }
 
 /* Strip Streamlit's chrome */
@@ -355,6 +369,60 @@ footer { visibility: hidden; }
   grid-column: 2 !important;
 }
 
+/* ---------- Split layout: sticky brief | scrolling dispatches --------- */
+.sf-split {
+  display: grid !important;
+  grid-template-columns: 5fr 7fr !important;
+  gap: 64px !important;
+  margin-top: 56px !important;
+  padding-top: 24px !important;
+  border-top: 1px solid var(--rule) !important;
+  align-items: start !important;
+}
+.sf-split .sf-sec {
+  /* Inside the split, kill the top rule + margin — the split owns them. */
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+  border-top: none !important;
+}
+.sf-split > .sf-col-left {
+  position: sticky !important;
+  top: 24px !important;
+  align-self: start !important;
+  max-height: calc(100vh - 48px) !important;
+  overflow-y: auto !important;
+}
+.sf-split > .sf-col-right {
+  min-width: 0 !important; /* let inner grids shrink */
+}
+.sf-split .sf-col-left::-webkit-scrollbar { width: 4px; }
+.sf-split .sf-col-left::-webkit-scrollbar-thumb { background: var(--rule-2); }
+
+/* § 02 Dispatches head inside the right column: keep the header inline. */
+.sf-split .sf-col-right .sf-sec-head { margin-bottom: 16px !important; }
+
+/* Brief in split mode: let the weights grid stack (one column now) */
+.sf-split .sf-brief-grid {
+  grid-template-columns: 1fr !important;
+  gap: 28px !important;
+}
+
+@media (max-width: 960px) {
+  .sf-split {
+    grid-template-columns: 1fr !important;
+    gap: 0 !important;
+  }
+  .sf-split > .sf-col-left {
+    position: static !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .sf-split .sf-brief-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 40px !important;
+  }
+}
+
 /* ---------- Colophon --------------------------------------------------- */
 .sf-colophon {
   margin-top: 72px !important;
@@ -426,10 +494,17 @@ _POOL_COMPANIES = [
     # GTM / devtools
     "notion", "ramp", "clay", "unify", "attio", "retool", "linear",
     "vercel", "supabase", "render", "fly", "replicate",
-    # Enterprise SaaS
+    # Enterprise SaaS / fintech
     "brex", "mercury", "rippling", "deel", "gusto",
     # YC-adjacent
     "cal", "resend", "trigger", "dub",
+    # Enterprise security / identity (IAM, zero-trust, cloud sec)
+    "okta", "zscaler", "cloudflare", "rubrik", "abnormalsecurity",
+    "snyk", "wiz", "1password", "semgrep",
+    # Observability / platform
+    "datadog", "newrelic", "gitlab", "jfrog",
+    # Consumer + scale SaaS buyers
+    "stripe", "plaid", "airbnb", "pinterest", "coinbase", "instacart", "loom",
 ]
 
 _HIRING_KEYWORDS = [
@@ -443,10 +518,16 @@ CANDIDATE_SOURCES = {
     "greenhouse": {
         "enabled": True,
         "boards": [
+            # AI / devtools / platform
             "anthropic", "scaleai", "openai", "perplexity",
             "glean", "cohere", "mistralai", "huggingface", "runwayml",
             "elevenlabs", "vercel", "linear", "replicate", "supabase",
             "rippling", "deel", "gusto", "brex",
+            # Enterprise security + observability (verified 200 OK)
+            "okta", "zscaler", "cloudflare", "rubrik", "abnormalsecurity",
+            "datadog", "newrelic", "gitlab", "jfrog",
+            # Consumer + scale SaaS
+            "stripe", "airbnb", "pinterest", "coinbase", "instacart",
         ],
         "hiring_keywords": _HIRING_KEYWORDS,
     },
@@ -456,6 +537,8 @@ CANDIDATE_SOURCES = {
         "boards": [
             "notion", "ramp", "clay", "unify", "attio", "retool",
             "cal", "resend", "trigger", "dub", "mercury",
+            # Security + scale (verified 200 OK)
+            "snyk", "wiz", "1password", "semgrep", "plaid", "loom",
         ],
         "hiring_keywords": _HIRING_KEYWORDS,
     },
@@ -464,13 +547,25 @@ CANDIDATE_SOURCES = {
         "orgs": [
             "anthropics", "openai", "scaleai", "clay-labs", "unifygtm",
             "vercel", "supabase", "huggingface", "cohere-ai", "mistralai",
+            "cloudflare", "snyk", "okta", "datadog", "gitlabhq",
         ],
         "lookback_days": 30,
     },
     "sec_edgar": {
         "enabled": True,
-        # Public companies whose 8-K/S-1/10-Q tell us meaningful GTM signals.
-        "tickers": ["CRM", "HUBS", "RNG", "NOW", "SNOW", "MDB", "NET", "DDOG"],
+        # Public co 8-K (exec change / M&A), S-1 (IPO), 10-K/Q signals.
+        # Mix of security vendors + large enterprise buyers across the
+        # industries most visitors fall into (finance, health, retail).
+        "tickers": [
+            # Original SaaS / dev infra
+            "CRM", "HUBS", "RNG", "NOW", "SNOW", "MDB", "NET", "DDOG",
+            # Security vendors (relevant for IAM/security-tech visitors)
+            "OKTA", "PANW", "CRWD", "ZS", "S", "FTNT", "GTLB", "FROG",
+            # Enterprise buyers — finance
+            "JPM", "GS", "BAC", "WFC", "MS",
+            # Enterprise buyers — healthcare
+            "UNH", "CVS", "ELV", "HUM",
+        ],
         "lookback_days": 60,
     },
     "news_rss": {
@@ -868,19 +963,20 @@ _inject_style()
 
 # ── Masthead ────────────────────────────────────────────────────────────────
 st.html(
-    f"""
-<div class="sf-top-rule"></div>
-<div class="sf-mast-kicker">
-  <span>SIGNALFORGE · ISSUE No. 01</span>
-  <span>{_dt.utcnow().strftime('%B %Y').upper()}</span>
+    """
+<div class="sf-narrow">
+  <div class="sf-top-rule"></div>
+  <div class="sf-mast-kicker">
+    <span>SIGNALFORGE · ISSUE No. 01</span>
+  </div>
+  <h1 class="sf-mast-title">The <em>dossier</em><br/>you'd write<br/>before the cold email.</h1>
+  <p class="sf-lede">
+    Type a company. SignalForge reads its public context, infers an <em>ideal customer profile</em>,
+    and files five lead accounts from a curated pool — each with its full signal ledger.
+    <br/><br/>
+    No cold email is generated here. That's a different tool.
+  </p>
 </div>
-<h1 class="sf-mast-title">The <em>dossier</em><br/>you'd write<br/>before the cold email.</h1>
-<p class="sf-lede">
-Type a company. SignalForge reads its public context, infers an <em>ideal customer profile</em>,
-and files five lead accounts from a curated pool — each with its full signal ledger.
-<br/><br/>
-No cold email is generated here. That's a different tool.
-</p>
 """
 )
 
@@ -926,7 +1022,7 @@ if submitted:
     weights = inf.get("signal_weights") or {}
     leads = result["leads"] or []
 
-    # ── § 01 · The brief ─────────────────────────────────────────────────
+    # ── Build § 01 brief + § 02 dispatches and render side-by-side ──────
     summary = (inf.get("company_summary") or "—").strip()
     titles = inf.get("target_titles") or []
     why = (inf.get("why") or "").strip()
@@ -939,9 +1035,9 @@ if submitted:
     ) or '<div class="sf-weight-row"><span class="sf-weight-label">—</span><span class="sf-weight-val">—</span></div>'
     why_html = f'<p class="sf-why">{why}</p>' if why else ""
 
-    st.html(
-        f"""
-<section class="sf-sec">
+    # § 01 · The brief — left column, sticky as the user scrolls dispatches.
+    brief_html = f"""
+<section class="sf-sec sf-col-left">
   <div class="sf-sec-head">
     <div class="sf-sec-num">§ 01</div>
     <h2 class="sf-sec-title">The brief</h2>
@@ -960,25 +1056,9 @@ if submitted:
   {why_html}
 </section>
 """
-    )
 
-    # ── § 02 · Dispatches ────────────────────────────────────────────────
-    st.html(
-        f"""
-<section class="sf-sec">
-  <div class="sf-sec-head">
-    <div class="sf-sec-num">§ 02</div>
-    <h2 class="sf-sec-title">Dispatches — top {len(leads)} of {result['pool_size']} pool signals</h2>
-  </div>
-</section>
-"""
-    )
-
-    if not leads:
-        st.info(
-            "No leads matched. Try a different visitor domain, or check back once the hourly pool refreshes."
-        )
-
+    # § 02 · Dispatches — right column, natural-scroll list of leads.
+    lead_blocks: list[str] = []
     for rank, lead in enumerate(leads, 1):
         is_top = rank == 1
         num_html = (
@@ -1003,7 +1083,7 @@ if submitted:
             f'<div class="sf-dispatch-more">+ {extra} more on file</div></div>'
             if extra > 0 else ""
         )
-        st.html(
+        lead_blocks.append(
             f"""
 <article class="sf-lead">
   <div class="sf-lead-num">{num_html}</div>
@@ -1019,6 +1099,25 @@ if submitted:
 </article>
 """
         )
+
+    empty_note = "" if leads else (
+        '<div class="sf-colophon" style="border-top:none; margin-top:24px;">'
+        "No leads matched this ICP in the current pool — try a different domain."
+        "</div>"
+    )
+
+    dispatches_html = f"""
+<section class="sf-sec sf-col-right">
+  <div class="sf-sec-head">
+    <div class="sf-sec-num">§ 02</div>
+    <h2 class="sf-sec-title">Dispatches — top {len(leads)} of {result['pool_size']} pool signals</h2>
+  </div>
+  {''.join(lead_blocks)}
+  {empty_note}
+</section>
+"""
+
+    st.html(f'<div class="sf-split">{brief_html}{dispatches_html}</div>')
 
     # ── Colophon ─────────────────────────────────────────────────────────
     backend = OLLAMA_MODEL if LLM_BACKEND == "ollama" else "claude"
