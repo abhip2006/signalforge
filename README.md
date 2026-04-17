@@ -2,6 +2,8 @@
 
 **An open-source signal-driven outbound engine for GTM teams — with a reply-quality eval harness.**
 
+👉 **Live demo (real output):** [abhip2006.github.io/signalforge](https://abhip2006.github.io/signalforge/)
+
 Built to answer a question every outbound team dodges: *"Is this AI-written email actually good enough to send?"*
 
 Most OSS GTM tooling stops at "wire up an LLM to enrichment data." SignalForge goes two steps further:
