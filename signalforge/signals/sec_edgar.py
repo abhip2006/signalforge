@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from signalforge.models import Signal, SignalKind
-from signalforge.signals.base import SourceContext, http_get_json
+from signalforge.signals.base import SourceContext, http_get_json, warn
 
 USER_AGENT = "signalforge/0.1 (abhip@berkeley.edu)"
 _TICKER_CACHE: dict[str, dict[str, Any]] | None = None
@@ -64,7 +64,8 @@ async def _load_ticker_map(ctx: SourceContext) -> dict[str, dict[str, Any]]:
     headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
     try:
         data = await http_get_json(ctx, url, headers=headers)
-    except Exception:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
+        warn("sec_edgar", "ticker_map", e)
         _TICKER_CACHE = {}
         return _TICKER_CACHE
     # Input is `{"0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."}, ...}`
@@ -99,7 +100,8 @@ async def _fetch_company_signals(
     async with sem:
         try:
             data = await http_get_json(ctx, url, headers=headers, timeout=20.0)
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            warn("sec_edgar", ticker, e)
             return []
 
     recent = (data.get("filings") or {}).get("recent") or {}

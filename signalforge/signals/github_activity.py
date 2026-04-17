@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from signalforge.models import Signal, SignalKind
-from signalforge.signals.base import SourceContext, http_get_json
+from signalforge.signals.base import SourceContext, http_get_json, warn
 
 
 class GitHubActivitySource:
@@ -32,7 +32,8 @@ class GitHubActivitySource:
             try:
                 repos_url = f"https://api.github.com/orgs/{org}/repos?per_page=100&sort=pushed"
                 repos = await http_get_json(ctx, repos_url, headers=headers)
-            except Exception:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001
+                warn("github", org, e)
                 continue
             if not isinstance(repos, list):
                 continue

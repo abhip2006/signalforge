@@ -21,9 +21,12 @@ CREATE TABLE IF NOT EXISTS runs (
     avg_draft_score REAL
 );
 
+-- (run_id, signal_id) composite PK so the same signal can be recorded against
+-- multiple runs (replay + bench semantics). Intra-run dedup is still handled
+-- by INSERT OR IGNORE against this composite key.
 CREATE TABLE IF NOT EXISTS signals (
-    signal_id TEXT PRIMARY KEY,
-    run_id TEXT,
+    run_id TEXT NOT NULL,
+    signal_id TEXT NOT NULL,
     kind TEXT,
     source TEXT,
     company_domain TEXT,
@@ -33,6 +36,7 @@ CREATE TABLE IF NOT EXISTS signals (
     observed_at TEXT,
     strength REAL,
     payload TEXT,
+    PRIMARY KEY (run_id, signal_id),
     FOREIGN KEY (run_id) REFERENCES runs(run_id)
 );
 
@@ -95,7 +99,47 @@ class SqliteSink:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._conn() as c:
+            self._migrate(c)
             c.executescript(SCHEMA)
+
+    def _migrate(self, conn: sqlite3.Connection) -> None:
+        """In-place migration: old schema had signal_id as sole PK, which meant
+        the same signal recorded across multiple runs silently collapsed. Detect
+        that shape and upgrade to composite (run_id, signal_id).
+        """
+        row = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='signals'"
+        ).fetchone()
+        if not row:
+            return  # fresh DB; SCHEMA below will create the new shape.
+        pk_cols = [
+            r[1] for r in conn.execute("PRAGMA table_info(signals)").fetchall() if r[5] > 0
+        ]
+        if pk_cols == ["signal_id"]:
+            conn.executescript(
+                """
+                ALTER TABLE signals RENAME TO _signals_old;
+                CREATE TABLE signals (
+                    run_id TEXT NOT NULL,
+                    signal_id TEXT NOT NULL,
+                    kind TEXT,
+                    source TEXT,
+                    company_domain TEXT,
+                    company_name TEXT,
+                    title TEXT,
+                    url TEXT,
+                    observed_at TEXT,
+                    strength REAL,
+                    payload TEXT,
+                    PRIMARY KEY (run_id, signal_id)
+                );
+                INSERT OR IGNORE INTO signals
+                  SELECT run_id, signal_id, kind, source, company_domain, company_name,
+                         title, url, observed_at, strength, payload
+                  FROM _signals_old WHERE run_id IS NOT NULL;
+                DROP TABLE _signals_old;
+                """
+            )
 
     @contextmanager
     def _conn(self):
@@ -127,11 +171,14 @@ class SqliteSink:
     def record_signals(self, run_id: str, signals: list[Signal]) -> None:
         with self._conn() as c:
             c.executemany(
-                """INSERT OR IGNORE INTO signals VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                """INSERT OR IGNORE INTO signals
+                   (run_id, signal_id, kind, source, company_domain, company_name,
+                    title, url, observed_at, strength, payload)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 [
                     (
-                        s.signal_id,
                         run_id,
+                        s.signal_id,
                         s.kind.value,
                         s.source,
                         s.company_domain,

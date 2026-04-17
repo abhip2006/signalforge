@@ -13,7 +13,7 @@ from typing import Any
 import httpx
 
 from signalforge.models import Signal, SignalKind
-from signalforge.signals.base import SourceContext
+from signalforge.signals.base import SourceContext, warn
 from signalforge.signals.company_registry import resolve_list
 
 DEFAULT_QUERIES = [
@@ -69,7 +69,8 @@ class ExaSource:
                         if r.status_code >= 400:
                             continue
                         data = r.json()
-                    except Exception:  # noqa: BLE001
+                    except Exception as e:  # noqa: BLE001
+                        warn("exa", f"{entry.name}/{q_template}", e)
                         continue
 
                     for res in data.get("results", []) or []:

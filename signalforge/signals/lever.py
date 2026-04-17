@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from signalforge.models import Signal, SignalKind
-from signalforge.signals.base import SourceContext, http_get_json
+from signalforge.signals.base import SourceContext, http_get_json, warn
 from signalforge.signals.company_registry import resolve_list
 
 
@@ -28,7 +28,8 @@ class LeverSource:
             try:
                 url = f"https://api.lever.co/v0/postings/{slug}?mode=json"
                 postings = await http_get_json(ctx, url)
-            except Exception:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001
+                warn("lever", slug, e)
                 continue
             if not isinstance(postings, list):
                 continue
