@@ -36,7 +36,6 @@ from signalforge.scoring import score_account
 from signalforge.signals import REGISTRY
 from signalforge.signals.base import SourceContext
 
-
 # ---------- LLM backend switch ----------------------------------------------
 # Set LLM_BACKEND=ollama to route ICP inference to a local Ollama model
 # (no API cost, no key required — but the app must run on a machine with
