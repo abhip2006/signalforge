@@ -29,6 +29,13 @@ import httpx
 import streamlit as st
 from anthropic import AsyncAnthropic
 
+from signalforge.config import Env, ICPConfig
+from signalforge.enrichment import fetch_company_context
+from signalforge.models import Company, EnrichedAccount, Signal
+from signalforge.scoring import score_account
+from signalforge.signals import REGISTRY
+from signalforge.signals.base import SourceContext
+
 
 # ---------- LLM backend switch ----------------------------------------------
 # Set LLM_BACKEND=ollama to route ICP inference to a local Ollama model
@@ -37,13 +44,6 @@ from anthropic import AsyncAnthropic
 LLM_BACKEND = os.environ.get("LLM_BACKEND", "anthropic").lower()
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b")
-
-from signalforge.config import Env, ICPConfig
-from signalforge.enrichment import fetch_company_context
-from signalforge.models import Company, EnrichedAccount, Signal
-from signalforge.scoring import score_account
-from signalforge.signals import REGISTRY
-from signalforge.signals.base import SourceContext
 
 st.set_page_config(page_title="SignalForge — live GTM lead demo", page_icon="🔍", layout="wide")
 
