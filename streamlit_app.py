@@ -505,7 +505,35 @@ def _load_live_boards() -> dict[str, list[str]]:
     return {"greenhouse": [], "ashby": [], "lever": []}
 
 
+def _load_sec_tickers() -> list[str]:
+    """Load the curated SEC ticker list from signalforge/resources/sec_tickers.txt."""
+    from pathlib import Path as _P
+    candidates = [
+        _P(__file__).parent / "signalforge" / "resources" / "sec_tickers.txt",
+        _P("signalforge/resources/sec_tickers.txt"),
+    ]
+    for path in candidates:
+        if path.exists():
+            tokens: list[str] = []
+            for raw_line in path.read_text().splitlines():
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                tokens.extend(t.strip() for t in line.split() if t.strip())
+            # Deduplicate preserving order
+            seen: set[str] = set()
+            out: list[str] = []
+            for t in tokens:
+                u = t.upper()
+                if u not in seen:
+                    seen.add(u)
+                    out.append(u)
+            return out
+    return []
+
+
 _LIVE_BOARDS = _load_live_boards()
+_SEC_TICKERS = _load_sec_tickers()
 
 # Semis + infra NOT on Greenhouse/Ashby but filing with the SEC — we pick
 # them up via the EDGAR source. Names echo into HN/news_rss matching.
@@ -557,23 +585,10 @@ CANDIDATE_SOURCES = {
     },
     "sec_edgar": {
         "enabled": True,
-        # Public co 8-K (exec change / M&A), S-1 (IPO), 10-K/Q signals.
-        # Mix of security vendors + large enterprise buyers across the
-        # industries most visitors fall into (finance, health, retail).
-        "tickers": [
-            # Original SaaS / dev infra
-            "CRM", "HUBS", "RNG", "NOW", "SNOW", "MDB", "NET", "DDOG",
-            # Security vendors (relevant for IAM/security-tech visitors)
-            "OKTA", "PANW", "CRWD", "ZS", "S", "FTNT", "GTLB", "FROG",
-            # Enterprise buyers — finance
-            "JPM", "GS", "BAC", "WFC", "MS",
-            # Enterprise buyers — healthcare
-            "UNH", "CVS", "ELV", "HUM",
-            # Semiconductors + EDA (for chip-industry visitors)
-            "NVDA", "AMD", "INTC", "AVGO", "QCOM", "TSM", "ASML",
-            "AMAT", "LRCX", "KLAC", "MU", "MRVL", "ADI", "TXN",
-            "SNPS", "CDNS", "ARM",
-        ],
+        # Ticker list loaded from signalforge/resources/sec_tickers.txt —
+        # ~400 public cos across SaaS / AI / semis / fintech / health /
+        # industrial / consumer. Each ticker = 1 company in the pool.
+        "tickers": _SEC_TICKERS,
         "lookback_days": 60,
     },
     "news_rss": {
@@ -812,18 +827,78 @@ def _safe_json(text: str) -> dict:
 
 # ---------- signal pool (cached across visitors) ----------------------------
 
-@st.cache_data(ttl=60 * 60, show_spinner=False)
-def _get_pool() -> list[dict]:
-    """Fetch signals from the candidate pool once per hour (shared across visitors).
+_POOL_DISK_CACHE = os.environ.get(
+    "SIGNALFORGE_POOL_CACHE",
+    str((__import__("pathlib").Path(__file__).parent / "data" / "pool_cache.json").resolve()),
+)
+_POOL_DISK_TTL = int(os.environ.get("SIGNALFORGE_POOL_TTL_SECONDS", "3600"))
 
-    Signals returned as plain dicts so Streamlit's cache can serialize them.
-    """
-    return asyncio.run(_fetch_pool())
+
+def _load_pool_from_disk() -> list[dict] | None:
+    """Return a fresh enough cached pool from disk, else None."""
+    import json as _json
+    import time as _time
+    from pathlib import Path as _P
+
+    path = _P(_POOL_DISK_CACHE)
+    if not path.exists():
+        return None
+    try:
+        age = _time.time() - path.stat().st_mtime
+        if age > _POOL_DISK_TTL:
+            return None
+        return _json.loads(path.read_text())
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _save_pool_to_disk(pool: list[dict]) -> None:
+    import contextlib
+    import json as _json
+    from pathlib import Path as _P
+
+    with contextlib.suppress(Exception):
+        path = _P(_POOL_DISK_CACHE)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_json.dumps(pool))
+
+
+@st.cache_data(ttl=_POOL_DISK_TTL, show_spinner=False)
+def _get_pool() -> list[dict]:
+    """Fetch signals from the candidate pool. Tries disk cache first (survives
+    Streamlit restarts), then refetches and persists. Shared across visitors
+    via @st.cache_data for in-process reuse."""
+    cached = _load_pool_from_disk()
+    if cached is not None:
+        return cached
+    pool = asyncio.run(_fetch_pool())
+    _save_pool_to_disk(pool)
+    return pool
+
+
+def _kick_off_pool_warmup() -> None:
+    """Background-thread pre-warm so the first visitor hits a hot cache.
+    Safe to call multiple times — the @st.cache_data decorator deduplicates."""
+    import contextlib
+    import threading
+
+    def _warm() -> None:
+        with contextlib.suppress(Exception):
+            _get_pool()
+
+    if st.session_state.get("_sf_pool_prewarm_started"):
+        return
+    st.session_state["_sf_pool_prewarm_started"] = True
+    t = threading.Thread(target=_warm, name="signalforge-pool-prewarm", daemon=True)
+    t.start()
 
 
 async def _fetch_pool() -> list[dict]:
     env = Env.load()
-    async with httpx.AsyncClient(timeout=30.0) as http:
+    # Wider connection pool so 50+ concurrent board fetches don't exhaust
+    # the default pool and cause cascading DNS / connect errors.
+    limits = httpx.Limits(max_connections=100, max_keepalive_connections=40)
+    async with httpx.AsyncClient(timeout=30.0, limits=limits) as http:
         ctx = SourceContext(env=env, http=http)
         tasks = []
         for key, cfg in CANDIDATE_SOURCES.items():
@@ -1128,6 +1203,7 @@ def _analyze_with_progress(visitor_domain: str, status) -> dict:
 # ---------- UI --------------------------------------------------------------
 
 _inject_style()
+_kick_off_pool_warmup()
 
 # ── Masthead ────────────────────────────────────────────────────────────────
 st.html(

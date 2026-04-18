@@ -93,10 +93,14 @@ class SecEdgarSource:
         # 1. Resolve ticker → CIK (once, cached).
         ticker_map = await _load_ticker_map(ctx)
 
-        # 2. Fetch recent submissions per CIK (in parallel, but bounded).
-        sem = asyncio.Semaphore(3)  # be polite; SEC cap is 10/sec
+        # 2. Fetch recent submissions per CIK. SEC's hard cap is 10 req/sec
+        # per IP and they bounce us for 10+ minutes if exceeded. We pace
+        # deliberately: 2 concurrent + 150ms inside-sem sleep ≈ 6 req/sec
+        # sustained, well under the ceiling.
+        sem = asyncio.Semaphore(2)
+        pacing_seconds = 0.15
         tasks = [
-            _fetch_company_signals(ctx, ticker, ticker_map, lookback_days, sem)
+            _fetch_company_signals(ctx, ticker, ticker_map, lookback_days, sem, pacing_seconds)
             for ticker in tickers
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -112,16 +116,17 @@ class SecEdgarSource:
 async def _load_ticker_map(ctx: SourceContext) -> dict[str, dict[str, Any]]:
     """Map TICKER (uppercase) → {cik_str, ticker, title}."""
     global _TICKER_CACHE
-    if _TICKER_CACHE is not None:
+    # Only use the cached value if it's actually populated — an empty dict
+    # means an earlier fetch failed and we should retry.
+    if _TICKER_CACHE:
         return _TICKER_CACHE
     url = "https://www.sec.gov/files/company_tickers.json"
     headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
     try:
-        data = await http_get_json(ctx, url, headers=headers)
+        data = await http_get_json(ctx, url, headers=headers, timeout=30.0)
     except Exception as e:  # noqa: BLE001
         warn("sec_edgar", "ticker_map", e)
-        _TICKER_CACHE = {}
-        return _TICKER_CACHE
+        return {}
     # Input is `{"0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."}, ...}`
     mapping: dict[str, dict[str, Any]] = {}
     if isinstance(data, dict):
@@ -142,6 +147,7 @@ async def _fetch_company_signals(
     ticker_map: dict[str, dict[str, Any]],
     lookback_days: int,
     sem: asyncio.Semaphore,
+    pacing_seconds: float = 0.0,
 ) -> list[Signal]:
     if ticker not in ticker_map:
         return []
@@ -154,6 +160,8 @@ async def _fetch_company_signals(
     async with sem:
         try:
             data = await http_get_json(ctx, url, headers=headers, timeout=20.0)
+            if pacing_seconds:
+                await asyncio.sleep(pacing_seconds)
         except Exception as e:  # noqa: BLE001
             warn("sec_edgar", ticker, e)
             return []

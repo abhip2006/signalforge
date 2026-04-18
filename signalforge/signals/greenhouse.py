@@ -1,12 +1,17 @@
 """Greenhouse public job board signals. No auth required."""
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
 from signalforge.models import Signal, SignalKind
 from signalforge.signals.base import SourceContext, http_get_json
-from signalforge.signals.company_registry import resolve_list
+from signalforge.signals.company_registry import BoardEntry, resolve_list
+
+# Parallel board fetches. Greenhouse has no published rate limit for
+# boards-api but we stay polite to survive big pool expansions.
+_BOARD_CONCURRENCY = 25
 
 
 class GreenhouseSource:
@@ -19,45 +24,54 @@ class GreenhouseSource:
             return []
         boards = resolve_list(source_config.get("boards", []) or [])
         keywords: list[str] = [k.lower() for k in source_config.get("hiring_keywords", [])]
+
+        sem = asyncio.Semaphore(_BOARD_CONCURRENCY)
+
+        async def _fetch_one(entry: BoardEntry) -> list[Signal]:
+            async with sem:
+                try:
+                    url = f"https://boards-api.greenhouse.io/v1/boards/{entry.token}/jobs?content=true"
+                    data = await http_get_json(ctx, url)
+                except Exception as e:  # noqa: BLE001 — source can be flaky; non-fatal
+                    return [_err_signal(entry.domain, entry.name, str(e))]
+            return _parse_board(entry, data, keywords)
+
+        results = await asyncio.gather(*(_fetch_one(e) for e in boards))
         out: list[Signal] = []
-        for entry in boards:
-            token = entry.token
-            try:
-                url = f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true"
-                data = await http_get_json(ctx, url)
-            except Exception as e:  # noqa: BLE001 - source can be flaky; skip not fatal
-                out.append(_err_signal(entry.domain, entry.name, str(e)))
-                continue
-            jobs = data.get("jobs") or []
-            company_domain = entry.domain
-            company_name = entry.name
-            for job in jobs:
-                title = (job.get("title") or "").strip()
-                if not title:
-                    continue
-                match = _keyword_match(title, keywords) if keywords else True
-                if not match:
-                    continue
-                posted = _parse_ts(job.get("updated_at") or job.get("first_published"))
-                out.append(
-                    Signal(
-                        kind=SignalKind.HIRING,
-                        source="greenhouse",
-                        company_domain=company_domain,
-                        company_name=company_name,
-                        title=f"Hiring: {title}",
-                        url=job.get("absolute_url"),
-                        observed_at=posted or datetime.now(UTC),
-                        payload={
-                            "board_token": token,
-                            "job_id": job.get("id"),
-                            "location": (job.get("location") or {}).get("name"),
-                            "department_ids": [d.get("id") for d in job.get("departments", [])],
-                        },
-                        strength=_hiring_strength(title, keywords),
-                    )
-                )
+        for batch in results:
+            out.extend(batch)
         return out
+
+
+def _parse_board(entry: BoardEntry, data: dict, keywords: list[str]) -> list[Signal]:
+    out: list[Signal] = []
+    jobs = data.get("jobs") or []
+    for job in jobs:
+        title = (job.get("title") or "").strip()
+        if not title:
+            continue
+        if keywords and not _keyword_match(title, keywords):
+            continue
+        posted = _parse_ts(job.get("updated_at") or job.get("first_published"))
+        out.append(
+            Signal(
+                kind=SignalKind.HIRING,
+                source="greenhouse",
+                company_domain=entry.domain,
+                company_name=entry.name,
+                title=f"Hiring: {title}",
+                url=job.get("absolute_url"),
+                observed_at=posted or datetime.now(UTC),
+                payload={
+                    "board_token": entry.token,
+                    "job_id": job.get("id"),
+                    "location": (job.get("location") or {}).get("name"),
+                    "department_ids": [d.get("id") for d in job.get("departments", [])],
+                },
+                strength=_hiring_strength(title, keywords),
+            )
+        )
+    return out
 
 
 def _err_signal(domain: str, name: str, msg: str) -> Signal:
@@ -75,7 +89,6 @@ def _parse_ts(value: Any) -> datetime | None:
     if not value:
         return None
     try:
-        # Greenhouse uses ISO-8601 like "2026-04-10T15:42:10-04:00"
         return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except ValueError:
         return None

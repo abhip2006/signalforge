@@ -1,12 +1,15 @@
 """Ashby public job board signals. No auth required."""
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
 from signalforge.models import Signal, SignalKind
 from signalforge.signals.base import SourceContext, http_get_json
-from signalforge.signals.company_registry import resolve_list
+from signalforge.signals.company_registry import BoardEntry, resolve_list
+
+_BOARD_CONCURRENCY = 25
 
 
 class AshbySource:
@@ -22,42 +25,54 @@ class AshbySource:
             "hiring_keywords",
             ["sdr", "bdr", "gtm", "go-to-market", "sales development", "growth", "revenue"],
         )]
+
+        sem = asyncio.Semaphore(_BOARD_CONCURRENCY)
+
+        async def _fetch_one(entry: BoardEntry) -> list[Signal]:
+            async with sem:
+                try:
+                    url = f"https://api.ashbyhq.com/posting-api/job-board/{entry.token}"
+                    data = await http_get_json(ctx, url)
+                except Exception as e:  # noqa: BLE001
+                    return [_err_signal(entry.domain, entry.name, str(e))]
+            return _parse_board(entry, data, keywords)
+
+        results = await asyncio.gather(*(_fetch_one(e) for e in boards))
         out: list[Signal] = []
-        for entry in boards:
-            slug = entry.token
-            try:
-                rest_url = f"https://api.ashbyhq.com/posting-api/job-board/{slug}"
-                data = await http_get_json(ctx, rest_url)
-            except Exception as e:  # noqa: BLE001
-                out.append(_err_signal(entry.domain, entry.name, str(e)))
-                continue
-            jobs = data.get("jobs", []) if isinstance(data, dict) else []
-            for job in jobs:
-                title = (job.get("title") or "").strip()
-                if not title:
-                    continue
-                if keywords and not any(k in title.lower() for k in keywords):
-                    continue
-                posted = _parse_ts(job.get("publishedAt") or job.get("updatedAt"))
-                out.append(
-                    Signal(
-                        kind=SignalKind.HIRING,
-                        source="ashby",
-                        company_domain=entry.domain,
-                        company_name=entry.name,
-                        title=f"Hiring: {title}",
-                        url=job.get("jobUrl") or job.get("applyUrl"),
-                        observed_at=posted or datetime.now(UTC),
-                        payload={
-                            "slug": slug,
-                            "location": job.get("locationName"),
-                            "department": job.get("department"),
-                            "employment_type": job.get("employmentType"),
-                        },
-                        strength=_strength(title),
-                    )
-                )
+        for batch in results:
+            out.extend(batch)
         return out
+
+
+def _parse_board(entry: BoardEntry, data: Any, keywords: list[str]) -> list[Signal]:
+    out: list[Signal] = []
+    jobs = data.get("jobs", []) if isinstance(data, dict) else []
+    for job in jobs:
+        title = (job.get("title") or "").strip()
+        if not title:
+            continue
+        if keywords and not any(k in title.lower() for k in keywords):
+            continue
+        posted = _parse_ts(job.get("publishedAt") or job.get("updatedAt"))
+        out.append(
+            Signal(
+                kind=SignalKind.HIRING,
+                source="ashby",
+                company_domain=entry.domain,
+                company_name=entry.name,
+                title=f"Hiring: {title}",
+                url=job.get("jobUrl") or job.get("applyUrl"),
+                observed_at=posted or datetime.now(UTC),
+                payload={
+                    "slug": entry.token,
+                    "location": job.get("locationName"),
+                    "department": job.get("department"),
+                    "employment_type": job.get("employmentType"),
+                },
+                strength=_strength(title),
+            )
+        )
+    return out
 
 
 def _strength(title: str) -> float:

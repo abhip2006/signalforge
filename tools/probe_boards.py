@@ -8,14 +8,21 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from pathlib import Path
 
 import httpx
 
-# Hand-curated candidate list across YC, a16z, notable tech, AI-native,
-# enterprise-sec, semiconductors, fintech, and consumer. Not every token
-# will be live; we probe and keep the survivors.
-GH_CANDIDATES = [
+sys.path.insert(0, str(Path(__file__).parent))
+from candidates import ASHBY, GREENHOUSE, LEVER  # noqa: E402
+
+GH_CANDIDATES = GREENHOUSE
+ASHBY_CANDIDATES = ASHBY
+LEVER_CANDIDATES = LEVER
+
+# Legacy inline list — kept under a dummy name so the rest of this file
+# still parses. It's ignored; the real candidates come from candidates.py.
+_LEGACY_GH = [
     # AI native / foundation models
     "anthropic", "openai", "perplexity", "glean", "cohere", "mistralai",
     "scaleai", "huggingface", "runwayml", "elevenlabs", "character", "inflection",
