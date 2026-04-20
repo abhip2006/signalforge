@@ -6,6 +6,7 @@ import pytest
 from signalforge.config import ICPConfig
 from signalforge.models import Company, EnrichedAccount, Signal, SignalKind
 from signalforge.scoring import score_account
+from signalforge.scoring.icp_scorer import SIGNAL_BUCKET
 
 
 @pytest.fixture
@@ -101,3 +102,55 @@ def test_unweighted_signals_ignored(icp: ICPConfig) -> None:
     )
     scored = score_account(acc, icp)
     assert scored.icp_score == 0.0
+
+
+@pytest.mark.unit
+def test_signal_bucket_partition_is_total() -> None:
+    # Every SignalKind must be assigned to exactly one bucket — prevents
+    # silent gaps when a new SignalKind is introduced.
+    missing = [k for k in SignalKind if k not in SIGNAL_BUCKET]
+    assert missing == [], f"SignalKinds without a bucket: {missing}"
+
+
+@pytest.mark.unit
+def test_sub_scores_split_contributions_by_bucket() -> None:
+    icp = ICPConfig(
+        name="t",
+        target_titles=["VP Eng"],
+        firmographics={},
+        signal_weights={
+            "hiring": 30.0,           # warmth
+            "funding": 20.0,          # authority
+            "github_activity": 10.0,  # authenticity
+        },
+        min_icp_score=0.0,
+        tone="direct",
+        sender={},
+        sources={},
+        raw={},
+    )
+    acc = EnrichedAccount(
+        company=Company(domain="x.com"),
+        signals=[
+            Signal(kind=SignalKind.HIRING, source="t", company_domain="x.com", title="h", strength=1.0),
+            Signal(kind=SignalKind.FUNDING, source="t", company_domain="x.com", title="f", strength=1.0),
+            Signal(kind=SignalKind.GITHUB_ACTIVITY, source="t", company_domain="x.com", title="g", strength=1.0),
+        ],
+    )
+    scored = score_account(acc, icp)
+    assert scored.warmth == pytest.approx(30.0, abs=0.1)
+    assert scored.authority == pytest.approx(20.0, abs=0.1)
+    assert scored.authenticity == pytest.approx(10.0, abs=0.1)
+    # Sum of buckets matches the composite (no firmographic penalty in this fixture).
+    assert scored.icp_score == pytest.approx(
+        scored.authenticity + scored.authority + scored.warmth, abs=0.1
+    )
+
+
+@pytest.mark.unit
+def test_sub_scores_zero_when_no_signals(icp: ICPConfig) -> None:
+    acc = EnrichedAccount(company=Company(domain="x.com"), signals=[])
+    scored = score_account(acc, icp)
+    assert scored.authenticity == 0.0
+    assert scored.authority == 0.0
+    assert scored.warmth == 0.0

@@ -31,6 +31,11 @@ TEMPLATE = Template("""<!doctype html>
   .signals { font-size: .82rem; color: #444; }
   .signals li { margin: .1rem 0; }
   details summary { cursor: pointer; color: #555; }
+  .subscores { display: flex; gap: .4rem; margin: .3rem 0 .1rem; font-size: .78rem; color: #333; }
+  .subscore { background: #eef3ff; padding: .1rem .45rem; border-radius: 10px; }
+  .subscore .lbl { color: #667; margin-right: .25rem; }
+  .contacts { font-size: .82rem; color: #444; margin: .3rem 0 0; }
+  .contacts li { margin: .1rem 0; }
 </style>
 </head>
 <body>
@@ -53,7 +58,24 @@ TEMPLATE = Template("""<!doctype html>
       <span class="score-pill {% if account.icp_score >= 70 %}score-hi{% elif account.icp_score >= 40 %}score-md{% else %}score-lo{% endif %}">ICP {{ "%.0f"|format(account.icp_score) }}</span>
       <span class="score-pill {% if score.overall >= 80 %}score-hi{% elif score.overall >= 65 %}score-md{% else %}score-lo{% endif %}">draft {{ "%.0f"|format(score.overall) }}</span>
     </h3>
-    <div class="meta"><code>{{ account.company.domain }}</code> · {{ account.signals|length }} signals</div>
+    <div class="meta"><code>{{ account.company.domain }}</code> · {{ account.signals|length }} signals{% if account.contacts %} · {{ account.contacts|length }} contacts{% endif %}</div>
+
+    <div class="subscores">
+      <span class="subscore"><span class="lbl">authenticity</span>{{ "%.0f"|format(account.authenticity) }}</span>
+      <span class="subscore"><span class="lbl">authority</span>{{ "%.0f"|format(account.authority) }}</span>
+      <span class="subscore"><span class="lbl">warmth</span>{{ "%.0f"|format(account.warmth) }}</span>
+    </div>
+
+    {% if account.contacts %}
+    <details>
+      <summary><strong>{{ account.contacts|length }} contact(s)</strong></summary>
+      <ul class="contacts">
+        {% for c in account.contacts %}
+          <li>{{ c.full_name }} — {{ c.title }}{% if c.email %} · <a href="mailto:{{ c.email }}">{{ c.email }}</a>{% endif %}{% if c.linkedin_url %} · <a href="{{ c.linkedin_url }}">LinkedIn</a>{% endif %} <span class="meta">({{ c.source }})</span></li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endif %}
 
     <details open>
       <summary><strong>Why now</strong> — {{ brief.headline }}</summary>
