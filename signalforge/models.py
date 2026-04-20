@@ -97,6 +97,9 @@ class ResearchBrief(BaseModel):
 class DraftKind(StrEnum):
     OPENER = "opener"
     FOLLOW_UP = "follow_up"
+    FOLLOW_UP_1 = "follow_up_1"
+    FOLLOW_UP_2 = "follow_up_2"
+    REPLY_THREAD = "reply_thread"
     LINKEDIN_NOTE = "linkedin_note"
 
 

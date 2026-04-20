@@ -11,6 +11,7 @@ from rich.table import Table
 
 from signalforge.config import Env, ICPConfig
 from signalforge.cost import LEDGER
+from signalforge.models import DraftKind
 from signalforge.orchestrator import replay_run, run_pipeline
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -26,6 +27,11 @@ def run(
     slack: bool = typer.Option(False, "--slack", help="Post top-scoring results to SLACK_WEBHOOK_URL."),
     hubspot: bool = typer.Option(False, "--hubspot", help="Upsert to HubSpot using HUBSPOT_TOKEN."),
     delta: bool = typer.Option(False, "--delta", help="Only score signals that are NEW since the last run (cron-friendly)."),
+    draft_kind: str = typer.Option(
+        "opener",
+        "--draft-kind",
+        help="Kind of draft to generate: opener | follow_up_1 | follow_up_2 | reply_thread | linkedin_note.",
+    ),
 ) -> None:
     """Run the full pipeline: signals → score → brief → draft → eval → report."""
     icp = ICPConfig.load(config)
@@ -34,12 +40,20 @@ def run(
     if not env.anthropic_api_key:
         console.log("[yellow]ANTHROPIC_API_KEY not set — brief/draft/eval will use stubs[/]")
 
+    try:
+        kind = DraftKind(draft_kind)
+    except ValueError as exc:
+        valid = ", ".join(k.value for k in DraftKind)
+        console.print(f"[red]invalid --draft-kind:[/] {exc}. Valid: {valid}")
+        raise typer.Exit(2) from exc
+
     run_final, results = asyncio.run(
         run_pipeline(
             icp, env,
             limit=limit, skip_drafts=skip_drafts,
             push_slack=slack, push_hubspot=hubspot,
             delta=delta,
+            draft_kind=kind,
         )
     )
 

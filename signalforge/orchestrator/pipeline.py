@@ -20,6 +20,7 @@ from signalforge.enrichment import fetch_company_context
 from signalforge.models import (
     Company,
     Draft,
+    DraftKind,
     EnrichedAccount,
     EvalScore,
     PipelineRun,
@@ -80,6 +81,7 @@ async def run_pipeline(
     push_slack: bool = False,
     push_hubspot: bool = False,
     delta: bool = False,
+    draft_kind: DraftKind = DraftKind.OPENER,
 ) -> tuple[PipelineRun, list[tuple[EnrichedAccount, ResearchBrief, Draft, EvalScore]]]:
     run_id = datetime.now(UTC).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6]
     started = datetime.now(UTC)
@@ -148,7 +150,23 @@ async def run_pipeline(
             targets = [a for a in accounts if a.icp_score >= icp.min_icp_score]
             max_variants = int(icp.raw.get("drafts", {}).get("max_variants_per_account", 3))
             concurrency = int(icp.raw.get("runtime", {}).get("concurrency", 4))
-            label = "researching" if skip_drafts else "research + drafts for"
+            if draft_kind in (
+                DraftKind.FOLLOW_UP,
+                DraftKind.FOLLOW_UP_1,
+                DraftKind.FOLLOW_UP_2,
+                DraftKind.REPLY_THREAD,
+            ):
+                console.log(
+                    f"[yellow]--draft-kind={draft_kind.value} needs prior-touch context; "
+                    f"the pipeline will emit openers labeled with that kind. "
+                    f"Use the follow-up/reply APIs directly for full fidelity.[/]"
+                )
+            if skip_drafts:
+                label = "researching"
+            elif draft_kind is DraftKind.OPENER:
+                label = "research + drafts for"
+            else:
+                label = f"research + {draft_kind.value} drafts for"
             t = progress.add_task(f"{label} {len(targets)} accounts (≤{concurrency}×)", total=len(targets))
 
             sem = asyncio.Semaphore(concurrency)
@@ -162,7 +180,7 @@ async def run_pipeline(
                         progress.advance(t)
                         return (acc, brief, _empty_draft(acc), _empty_score(acc))
                     variants = await generate_drafts(
-                        acc, brief, icp, env, max_variants=max_variants
+                        acc, brief, icp, env, kind=draft_kind, max_variants=max_variants
                     )
                     for d, sc in variants:
                         db.record_draft(run_id, d, sc)
