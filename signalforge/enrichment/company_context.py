@@ -17,6 +17,11 @@ from typing import Any
 import httpx
 
 from signalforge.config import Env
+from signalforge.enrichment.company_context_cache import (
+    DEFAULT_TTL_SECONDS,
+    get_cached,
+    set_cached,
+)
 
 DEFAULT_PATHS = ("/", "/about", "/company", "/careers")
 # naive but effective: strip scripts/styles/tags, collapse whitespace
@@ -41,22 +46,37 @@ async def fetch_company_context(
     paths: tuple[str, ...] = DEFAULT_PATHS,
     max_chars: int = 2500,
     timeout: float = 10.0,
+    cache_ttl_seconds: int = DEFAULT_TTL_SECONDS,
+    use_cache: bool = True,
 ) -> CompanyContext | None:
     """Try Firecrawl first if keyed; fall back to raw httpx.
 
     Returns None only on total failure (no page fetched). Otherwise returns
     a CompanyContext even if text is short.
+
+    Results are memoised in a file-backed SQLite cache keyed by the domain
+    with a configurable TTL (default 7 days). Set ``use_cache=False`` to
+    force a refresh — the refreshed value is still written back to the cache.
     """
     if not domain or domain.endswith(".unknown") or domain.endswith(".github"):
         return None
 
+    if use_cache:
+        cached = await get_cached(domain)
+        if cached is not None:
+            return cached
+
     if env.firecrawl_api_key:
         ctx = await _fetch_firecrawl(domain, env.firecrawl_api_key, max_chars, timeout)
         if ctx is not None:
+            await set_cached(domain, ctx, ttl_seconds=cache_ttl_seconds)
             return ctx
         # fall through to raw if Firecrawl fails
 
-    return await _fetch_raw(domain, paths, max_chars, timeout)
+    ctx = await _fetch_raw(domain, paths, max_chars, timeout)
+    if ctx is not None:
+        await set_cached(domain, ctx, ttl_seconds=cache_ttl_seconds)
+    return ctx
 
 
 async def _fetch_firecrawl(
@@ -99,7 +119,7 @@ async def _fetch_raw(
     async with httpx.AsyncClient(
         timeout=timeout,
         follow_redirects=True,
-        headers={"User-Agent": "signalforge/0.1 (+research)"},
+        headers={"User-Agent": "signalforge/0.2 (+https://github.com/abhip2006/signalforge)"},
     ) as client:
         tasks = [_fetch_one(client, f"https://{domain}{p}") for p in paths]
         results = await asyncio.gather(*tasks, return_exceptions=True)

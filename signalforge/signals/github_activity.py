@@ -4,11 +4,38 @@ Uses the REST API; works unauthenticated (60 req/hr) or with GITHUB_TOKEN (5,000
 """
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from signalforge.models import Signal, SignalKind
 from signalforge.signals.base import SourceContext, http_get_json, warn
+
+_logger = logging.getLogger(__name__)
+
+# Emit the "missing token" warning exactly once per process to avoid log spam
+# when this source is invoked repeatedly (e.g. Streamlit refresh loops).
+_MISSING_TOKEN_WARNED = False
+
+
+def _warn_if_missing_token(github_token: str | None) -> None:
+    """Log a single warning when GITHUB_TOKEN is absent.
+
+    GitHub caps unauthenticated requests at 60/hr per IP. On shared cloud
+    egress (Hugging Face Spaces et al.) this budget is shared with every
+    other tenant, so the source will silently starve unless a token is set.
+    """
+    global _MISSING_TOKEN_WARNED
+    if github_token:
+        return
+    if _MISSING_TOKEN_WARNED:
+        return
+    _MISSING_TOKEN_WARNED = True
+    _logger.warning(
+        "GITHUB_TOKEN is not set — github_activity will use anonymous auth "
+        "(rate limit: 60 requests/hour per IP, often lower on shared cloud "
+        "egress). Set GITHUB_TOKEN to raise this to 5,000 req/hr."
+    )
 
 
 class GitHubActivitySource:
@@ -22,6 +49,8 @@ class GitHubActivitySource:
         orgs: list[str] = source_config.get("orgs", []) or []
         lookback_days = int(source_config.get("lookback_days", 30))
         cutoff = datetime.now(UTC) - timedelta(days=lookback_days)
+
+        _warn_if_missing_token(ctx.env.github_token)
 
         headers = {"Accept": "application/vnd.github+json"}
         if ctx.env.github_token:
