@@ -1,9 +1,10 @@
 """Core domain models. Immutable by default — mutations return new instances."""
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -46,15 +47,20 @@ class Signal(BaseModel):
         return hashlib.sha1(key.encode()).hexdigest()[:16]
 
 
-class Contact(BaseModel):
-    model_config = ConfigDict(frozen=True)
+@dataclass(frozen=True)
+class Contact:
+    """A person attached to an account.
 
-    email: str | None = None
-    first_name: str | None = None
-    last_name: str | None = None
-    title: str | None = None
+    Frozen by design — contact enrichers return new instances rather than
+    mutating existing ones. `source` is a `Literal` so adding a new enricher
+    forces a type-check update across the codebase.
+    """
+
+    full_name: str
+    title: str
     linkedin_url: str | None = None
-    source: str = "unknown"
+    email: str | None = None
+    source: Literal["apollo"] = "apollo"
 
 
 class Company(BaseModel):
@@ -71,11 +77,22 @@ class Company(BaseModel):
 
 
 class EnrichedAccount(BaseModel):
-    """A company + its signals + scored enrichment + selected contacts."""
+    """A company + its signals + scored enrichment + selected contacts.
+
+    `icp_score` is the headline composite. The three named sub-scores
+    (`authenticity`, `authority`, `warmth`) are additive transparency over the
+    same underlying `score_breakdown` — they are NOT independent scores that
+    get summed into the headline. See `signalforge.scoring.icp_scorer`.
+    """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     company: Company
     signals: list[Signal] = Field(default_factory=list)
     contacts: list[Contact] = Field(default_factory=list)
     icp_score: float = 0.0
+    authenticity: float = 0.0   # GitHub, Product Hunt, HN — product-level signals
+    authority: float = 0.0      # SEC filings, exec moves, funding, tier-1 press
+    warmth: float = 0.0         # Hiring + growth signals — "warmth of timing"
     score_breakdown: dict[str, float] = Field(default_factory=dict)
     score_reasons: list[str] = Field(default_factory=list)
 
