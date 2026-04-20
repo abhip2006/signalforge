@@ -1,3 +1,15 @@
+---
+title: SignalForge
+emoji: 📡
+colorFrom: yellow
+colorTo: gray
+sdk: streamlit
+sdk_version: 1.40.0
+app_file: streamlit_app.py
+pinned: false
+python_version: "3.11"
+---
+
 # SignalForge
 
 **An open-source signal-driven outbound engine for GTM teams — with a reply-quality eval harness.**
