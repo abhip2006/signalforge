@@ -1,9 +1,13 @@
-"""Follow-up draft generation — aware of the prior touch.
+"""Follow-up and reply-thread draft generation — aware of prior context.
 
 A good follow-up does two things most AI-SDR tools get wrong:
   1. Does NOT re-anchor to the same signal (that's a "bump"; it's lazy).
   2. Adds a new angle — a peer proof point, a different stakeholder,
      or a freshly-observed signal (filing, hire, launch, podcast).
+
+A reply-thread draft responds to an actual prospect reply. It must mirror
+the sender's tone, answer their question directly, and keep the next step
+small.
 """
 from __future__ import annotations
 
@@ -36,6 +40,53 @@ FOLLOW_UP_SYSTEM = dedent("""\
     - ONE clear CTA.
     - No "just circling back", "following up", "bumping this to the top".
     - Do not quote the prior opener.
+
+    Output JSON: {"subject": str, "body": str}
+""")
+
+FOLLOW_UP_2_SYSTEM = dedent("""\
+    You write the SECOND follow-up in a cold-outbound sequence. The
+    opener anchored to the original signal; the first follow-up added a
+    new angle or peer proof. No reply came back. This is the LAST touch
+    before you move on.
+
+    Your job in this second follow-up:
+
+      1. Acknowledge explicitly that this is the last message (briefly,
+         not theatrically). A "breakup email" done well.
+      2. Offer ONE durable artifact the prospect can pick up later
+         without replying (a short write-up, a template, an intro, a
+         public post). No "jump on a call".
+      3. Leave the door open — a single sentence.
+
+    Non-negotiables:
+    - ≤ 90 words.
+    - ONE soft CTA (send the thing, reply if useful, or nothing at all).
+    - No "just circling back", "following up", "bumping this to the top",
+      "third time's the charm".
+    - Do not quote the prior emails verbatim.
+
+    Output JSON: {"subject": str, "body": str}
+""")
+
+REPLY_THREAD_SYSTEM = dedent("""\
+    You write REPLIES inside an active cold-email thread. The prospect
+    already replied to one of your earlier messages. Your next message:
+
+      1. Answers whatever the prospect actually asked — directly, first
+         sentence.
+      2. Matches the tone and length of their reply. Short prospect reply
+         = short response. Do not inflate.
+      3. Keeps the next step SMALL — a specific question, a resource
+         link, or a 15-min slot. Do not pivot to new signals; you're in
+         a live conversation.
+
+    Non-negotiables:
+    - ≤ 80 words.
+    - ONE clear next step.
+    - No "great question", "thanks for your interest", "I'd love to".
+    - Mirror the prospect's phrasing when answering (quote their term
+      when it helps).
 
     Output JSON: {"subject": str, "body": str}
 """)
@@ -98,7 +149,7 @@ async def generate_follow_up(
     draft = Draft(
         account_domain=account.company.domain,
         contact_email=prior.contact_email,
-        kind=DraftKind.FOLLOW_UP,
+        kind=DraftKind.FOLLOW_UP_1,
         subject=(data.get("subject") or "").strip() or None,
         body=(data.get("body") or "").strip(),
         variant=prior.variant,
@@ -107,6 +158,155 @@ async def generate_follow_up(
     )
     if not draft.body:
         return _stub_pair(account, brief, prior)
+
+    score = await score_draft(draft, brief, icp, env)
+    return draft, score
+
+
+async def generate_follow_up_2(
+    account: EnrichedAccount,
+    brief: ResearchBrief,
+    prior_opener: Draft,
+    prior_follow_up: Draft,
+    icp: ICPConfig,
+    env: Env,
+    *,
+    days_since_prior: int = 7,
+) -> tuple[Draft, EvalScore]:
+    """Produce the SECOND follow-up — the breakup email.
+
+    Given both the opener and the first follow-up (so the model doesn't
+    restate either), emits a short final touch that leaves a durable
+    artifact rather than pushing a meeting.
+    """
+    if not env.anthropic_api_key:
+        return _stub_pair_2(account, brief, prior_opener, prior_follow_up)
+
+    client = AsyncAnthropic(api_key=env.anthropic_api_key)
+    user = dedent(f"""\
+        Prospect: {account.company.name or account.company.domain}
+        Tone: {icp.tone}
+        Sender: {icp.sender.get("name")} — {icp.sender.get("title")} at {icp.sender.get("company")}
+
+        OPENER (subject: {prior_opener.subject or '-'}):
+        ---
+        {prior_opener.body}
+        ---
+
+        FOLLOW-UP 1 (subject: {prior_follow_up.subject or '-'}):
+        ---
+        {prior_follow_up.body}
+        ---
+
+        Days since last touch: {days_since_prior}. This is the LAST message.
+        Offer one durable artifact (short write-up, a template, a one-pager,
+        a public post). Do not push a meeting.
+
+        Available hooks if a new angle helps: {json.dumps(brief.hooks[:3])}
+
+        Return JSON only.
+    """)
+
+    msg = await client.messages.create(
+        model=env.claude_model,
+        max_tokens=600,
+        system=[
+            {
+                "type": "text",
+                "text": FOLLOW_UP_2_SYSTEM,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
+        messages=[{"role": "user", "content": user}],
+    )
+    if not ledger_disabled():
+        LEDGER.record("follow_up", env.claude_model, getattr(msg, "usage", None))
+    record_from_response(msg, model=env.claude_model, stage="follow_up_2")
+    text = "".join(b.text for b in msg.content if getattr(b, "type", None) == "text").strip()
+    data = _safe_json(text)
+
+    draft = Draft(
+        account_domain=account.company.domain,
+        contact_email=prior_opener.contact_email,
+        kind=DraftKind.FOLLOW_UP_2,
+        subject=(data.get("subject") or "").strip() or None,
+        body=(data.get("body") or "").strip(),
+        variant=prior_opener.variant,
+        tone=icp.tone,
+        model=env.claude_model,
+    )
+    if not draft.body:
+        return _stub_pair_2(account, brief, prior_opener, prior_follow_up)
+
+    score = await score_draft(draft, brief, icp, env)
+    return draft, score
+
+
+async def generate_reply_thread(
+    account: EnrichedAccount,
+    brief: ResearchBrief,
+    prior_opener: Draft,
+    prospect_reply: str,
+    icp: ICPConfig,
+    env: Env,
+) -> tuple[Draft, EvalScore]:
+    """Generate a reply inside an active thread — responds to the prospect's
+    actual message, mirrors their length/tone, proposes a small next step.
+    """
+    if not env.anthropic_api_key:
+        return _stub_reply(account, brief, prior_opener, prospect_reply)
+
+    client = AsyncAnthropic(api_key=env.anthropic_api_key)
+    user = dedent(f"""\
+        Prospect: {account.company.name or account.company.domain}
+        Tone: {icp.tone}
+        Sender: {icp.sender.get("name")} — {icp.sender.get("title")} at {icp.sender.get("company")}
+        CTA target: {icp.sender.get("calendly") or "brief email thread"}
+
+        YOUR PRIOR OPENER (subject: {prior_opener.subject or '-'}):
+        ---
+        {prior_opener.body}
+        ---
+
+        PROSPECT REPLY:
+        ---
+        {prospect_reply}
+        ---
+
+        Write the reply. Answer their question first. Mirror their length.
+        Return JSON only.
+    """)
+
+    msg = await client.messages.create(
+        model=env.claude_model,
+        max_tokens=500,
+        system=[
+            {
+                "type": "text",
+                "text": REPLY_THREAD_SYSTEM,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
+        messages=[{"role": "user", "content": user}],
+    )
+    if not ledger_disabled():
+        LEDGER.record("reply_thread", env.claude_model, getattr(msg, "usage", None))
+    record_from_response(msg, model=env.claude_model, stage="reply_thread")
+    text = "".join(b.text for b in msg.content if getattr(b, "type", None) == "text").strip()
+    data = _safe_json(text)
+
+    draft = Draft(
+        account_domain=account.company.domain,
+        contact_email=prior_opener.contact_email,
+        kind=DraftKind.REPLY_THREAD,
+        subject=(data.get("subject") or "").strip() or None,
+        body=(data.get("body") or "").strip(),
+        variant=prior_opener.variant,
+        tone=icp.tone,
+        model=env.claude_model,
+    )
+    if not draft.body:
+        return _stub_reply(account, brief, prior_opener, prospect_reply)
 
     score = await score_draft(draft, brief, icp, env)
     return draft, score
@@ -123,7 +323,7 @@ def _stub_pair(
     d = Draft(
         account_domain=account.company.domain,
         contact_email=prior.contact_email,
-        kind=DraftKind.FOLLOW_UP,
+        kind=DraftKind.FOLLOW_UP_1,
         subject="Different angle on the last one",
         body=body,
         variant=prior.variant,
@@ -131,6 +331,65 @@ def _stub_pair(
     s = EvalScore(
         draft_id="stub",
         overall=60.0,
+        dimensions={"signal_anchoring": 60, "length": 100, "single_cta": 90},
+        rationale="stub (no API key)",
+        judge_model="stub",
+    )
+    return d, s
+
+
+def _stub_pair_2(
+    account: EnrichedAccount,
+    brief: ResearchBrief,
+    prior_opener: Draft,
+    prior_follow_up: Draft,
+) -> tuple[Draft, EvalScore]:
+    artifact = brief.hooks[0] if brief.hooks else brief.headline or "a short teardown"
+    body = (
+        f"Last note from me — if the earlier threads on {artifact} weren't "
+        f"quite the lane, no worries. Happy to send the one-pager either way; "
+        f"reply if useful."
+    )
+    d = Draft(
+        account_domain=account.company.domain,
+        contact_email=prior_opener.contact_email,
+        kind=DraftKind.FOLLOW_UP_2,
+        subject="Last note on this",
+        body=body,
+        variant=prior_opener.variant,
+    )
+    s = EvalScore(
+        draft_id="stub",
+        overall=60.0,
+        dimensions={"signal_anchoring": 55, "length": 100, "single_cta": 85},
+        rationale="stub (no API key)",
+        judge_model="stub",
+    )
+    return d, s
+
+
+def _stub_reply(
+    account: EnrichedAccount,
+    brief: ResearchBrief,
+    prior_opener: Draft,
+    prospect_reply: str,
+) -> tuple[Draft, EvalScore]:
+    short = (prospect_reply or "").strip().split("\n", 1)[0][:80]
+    body = (
+        f"On '{short}': quickest answer is the shared write-up — can drop it in "
+        f"the thread today. Want me to send it, or would a 15-min slot be easier?"
+    )
+    d = Draft(
+        account_domain=account.company.domain,
+        contact_email=prior_opener.contact_email,
+        kind=DraftKind.REPLY_THREAD,
+        subject="Re: " + (prior_opener.subject or "follow-up"),
+        body=body,
+        variant=prior_opener.variant,
+    )
+    s = EvalScore(
+        draft_id="stub",
+        overall=62.0,
         dimensions={"signal_anchoring": 60, "length": 100, "single_cta": 90},
         rationale="stub (no API key)",
         judge_model="stub",

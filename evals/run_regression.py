@@ -37,6 +37,7 @@ GOLDEN_PATH = Path(__file__).parent / "golden.jsonl"
 class Case:
     id: str
     label: str                         # "good" | "bad"
+    kind: str                          # "opener" | "follow_up_1" | "follow_up_2" | "reply_thread" | "linkedin_note"
     signal: str
     brief_headline: str
     draft_subject: str
@@ -44,6 +45,8 @@ class Case:
     expected_overall_min: float | None
     expected_overall_max: float | None
     expected_dimensions: dict[str, float]
+    notes: str = ""
+    needs_owner_review: bool = False
 
 
 def _load_cases() -> list[Case]:
@@ -56,6 +59,7 @@ def _load_cases() -> list[Case]:
             Case(
                 id=o["id"],
                 label=o["label"],
+                kind=o.get("kind", "opener"),
                 signal=o.get("signal", ""),
                 brief_headline=o.get("brief_headline", ""),
                 draft_subject=o.get("draft_subject", ""),
@@ -63,14 +67,28 @@ def _load_cases() -> list[Case]:
                 expected_overall_min=o.get("expected_overall_min"),
                 expected_overall_max=o.get("expected_overall_max"),
                 expected_dimensions=o.get("expected_dimensions", {}),
+                notes=o.get("notes", ""),
+                needs_owner_review=bool(o.get("needs_owner_review", False)),
             )
         )
     return cases
 
 
+def _length_kind(kind: str) -> str:
+    """Map a golden-case kind to the string the length-score function expects.
+
+    `_length_score` uses a 75-word cap for 'opener' and 120 for everything else.
+    Follow-ups and reply-thread messages earn the longer cap; LinkedIn-note edge
+    cases are scored as openers (they must stay very short).
+    """
+    if kind == "linkedin_note":
+        return "opener"
+    return kind if kind == "opener" else "follow_up"
+
+
 def _deterministic_only(case: Case) -> dict[str, float]:
     """Score with only the deterministic dimensions — no LLM needed."""
-    length, _ = _length_score(case.draft_body, "opener")
+    length, _ = _length_score(case.draft_body, _length_kind(case.kind))
     cta, _ = _cta_score(case.draft_body)
     spam, _ = _spam_score(case.draft_body)
     grammar, _ = _grammar_score(case.draft_body)
@@ -99,9 +117,13 @@ async def _full_score(case: Case, env: Env) -> dict[str, float]:
         hooks=[case.signal],
         citations=[],
     )
+    try:
+        draft_kind = DraftKind(case.kind)
+    except ValueError:
+        draft_kind = DraftKind.OPENER
     draft = Draft(
         account_domain="eval.example",
-        kind=DraftKind.OPENER,
+        kind=draft_kind,
         subject=case.draft_subject,
         body=case.draft_body,
     )

@@ -114,6 +114,9 @@ class ResearchBrief(BaseModel):
 class DraftKind(StrEnum):
     OPENER = "opener"
     FOLLOW_UP = "follow_up"
+    FOLLOW_UP_1 = "follow_up_1"
+    FOLLOW_UP_2 = "follow_up_2"
+    REPLY_THREAD = "reply_thread"
     LINKEDIN_NOTE = "linkedin_note"
 
 
@@ -140,6 +143,9 @@ class EvalScore(BaseModel):
     dimensions: dict[str, float]  # per-dimension 0..100
     rationale: str
     flagged: list[str] = Field(default_factory=list)  # e.g. ["spam_trigger:just_circling_back"]
+    # Conditions under which the given score would be wrong. Populated by the LLM judge
+    # (2-3 items). Empty when the judge is skipped (deterministic-only mode, no API key).
+    falsification_notes: list[str] = Field(default_factory=list)
     scored_at: datetime = Field(default_factory=_utcnow)
     judge_model: str = ""
 

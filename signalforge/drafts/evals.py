@@ -74,9 +74,16 @@ JUDGE_SYSTEM = dedent("""\
     - tone (0-100): does it match the requested tone (direct/warm/formal),
       written like a peer DM rather than marketing copy?
 
+    You also emit 2-3 FALSIFICATION NOTES: short conditions under which the
+    score above would be WRONG. A good falsification is a testable claim,
+    e.g. "depends on the hiring req still being open after 30 days" or
+    "assumes the prospect reads subject lines that mention 'attribution'".
+    Bad falsifications are tautologies ("this could be wrong"). Be specific.
+
     Output JSON only:
     {"signal_anchoring": int, "personalization": int, "tone": int,
-     "rationale": "<= 40 words"}
+     "rationale": "<= 40 words",
+     "falsification_notes": ["...", "...", "..."]}
 """)
 
 
@@ -201,7 +208,7 @@ async def score_draft(
     grammar, g_flags = _grammar_score(draft.body)
 
     # LLM judge dimensions (signal_anchoring / personalization / tone)
-    judged, j_rationale, j_model = await _judge(draft, brief, icp, env)
+    judged, j_rationale, j_model, falsifications = await _judge(draft, brief, icp, env)
 
     dimensions: dict[str, float] = {
         "signal_anchoring": judged.get("signal_anchoring", 50.0),
@@ -228,15 +235,16 @@ async def score_draft(
         dimensions={k: round(v, 1) for k, v in dimensions.items()},
         rationale=j_rationale,
         flagged=flagged,
+        falsification_notes=falsifications,
         judge_model=j_model,
     )
 
 
 async def _judge(
     draft: Draft, brief: ResearchBrief, icp: ICPConfig, env: Env
-) -> tuple[dict[str, float], str, str]:
+) -> tuple[dict[str, float], str, str, list[str]]:
     if not env.anthropic_api_key:
-        return {}, "no ANTHROPIC_API_KEY — llm-judge skipped", "stub"
+        return {}, "no ANTHROPIC_API_KEY — llm-judge skipped", "stub", []
 
     client = AsyncAnthropic(api_key=env.anthropic_api_key)
     user = dedent(f"""\
@@ -249,11 +257,11 @@ async def _judge(
         DRAFT BODY:
         {draft.body}
 
-        Score this draft. JSON only.
+        Score this draft. Include 2-3 falsification_notes. JSON only.
     """)
     msg = await client.messages.create(
         model=env.claude_model_fast,       # cheaper judge
-        max_tokens=220,
+        max_tokens=360,
         system=[
             {
                 "type": "text",
@@ -268,6 +276,18 @@ async def _judge(
     record_from_response(msg, model=env.claude_model_fast, stage="judge")
     text = "".join(b.text for b in msg.content if getattr(b, "type", None) == "text").strip()
     data = _safe_json(text)
+    raw_falsifications = data.get("falsification_notes") or []
+    falsifications: list[str] = []
+    if isinstance(raw_falsifications, list):
+        for note in raw_falsifications:
+            if note is None:
+                continue
+            text_note = str(note).strip()
+            if text_note:
+                # Cap per-note length to keep the report scannable.
+                falsifications.append(text_note[:240])
+            if len(falsifications) >= 3:
+                break
     return (
         {
             "signal_anchoring": float(data.get("signal_anchoring", 50.0)),
@@ -276,6 +296,7 @@ async def _judge(
         },
         str(data.get("rationale", ""))[:280],
         env.claude_model_fast,
+        falsifications,
     )
 
 
