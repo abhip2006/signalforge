@@ -14,7 +14,7 @@ python_version: "3.11"
 
 **An open-source signal-driven outbound engine for GTM teams — with a reply-quality eval harness.**
 
-👉 **Live interactive demo:** enter your company → get 3-5 lead accounts with their signals. Static sample output at [abhip2006.github.io/signalforge](https://abhip2006.github.io/signalforge/). Streamlit visitor flow in [`streamlit_app.py`](./streamlit_app.py).
+👉 **Live interactive demo:** [qing291-signalforge.hf.space](https://qing291-signalforge.hf.space) — enter your company, get 3–5 lead accounts with their signals. Static sample output at [abhip2006.github.io/signalforge](https://abhip2006.github.io/signalforge/). Source: [`streamlit_app.py`](./streamlit_app.py).
 
 Built to answer a question every outbound team dodges: *"Is this AI-written email actually good enough to send?"*
 
