@@ -22,7 +22,9 @@ import os
 import re
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from textwrap import dedent
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -31,10 +33,18 @@ from anthropic import AsyncAnthropic
 
 from signalforge.config import Env, ICPConfig
 from signalforge.enrichment import fetch_company_context
+from signalforge.ledger import record_from_response, session_totals
 from signalforge.models import Company, EnrichedAccount, Signal
 from signalforge.scoring import score_account
 from signalforge.signals import REGISTRY
 from signalforge.signals.base import SourceContext
+
+# ---------- Per-session cost guardrail --------------------------------------
+# Hosted on HF Spaces the owner eats every API dollar. Soft-cap each visitor
+# so a single determined user can't drain the account. Numbers are intentionally
+# generous for the happy path — a typical run is ~1 Claude call (ICP infer).
+SESSION_CALL_CAP = 10
+SESSION_COST_CAP_USD = 0.25
 
 # ---------- LLM backend switch ----------------------------------------------
 # Set LLM_BACKEND=ollama to route ICP inference to a local Ollama model
@@ -730,7 +740,14 @@ ICP_INFERENCE_SYSTEM = dedent("""\
 """)
 
 
-async def _infer_icp(domain: str, ctx_text: str, name_hint: str, env: Env) -> dict:
+async def _infer_icp(
+    domain: str,
+    ctx_text: str,
+    name_hint: str,
+    env: Env,
+    *,
+    session_id: str | None = None,
+) -> dict:
     user = dedent(f"""\
         Company domain: {domain}
         Public context snippet (scraped):
@@ -756,13 +773,17 @@ async def _infer_icp(domain: str, ctx_text: str, name_hint: str, env: Env) -> di
             "why": "stub",
         }
 
+    # ICP inference is a classification task — Haiku 4.5 handles it at ~1/15th
+    # the cost of Opus without a quality drop on the output JSON shape.
+    icp_model = env.claude_model_fast
     client = AsyncAnthropic(api_key=env.anthropic_api_key)
     msg = await client.messages.create(
-        model=env.claude_model_fast,
+        model=icp_model,
         max_tokens=700,
         system=[{"type": "text", "text": ICP_INFERENCE_SYSTEM, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user}],
     )
+    record_from_response(msg, model=icp_model, stage="icp_inference", session_id=session_id)
     text = "".join(b.text for b in msg.content if getattr(b, "type", None) == "text").strip()
     return _safe_json(text)
 
@@ -893,20 +914,59 @@ def _kick_off_pool_warmup() -> None:
     t.start()
 
 
-async def _fetch_pool() -> list[dict]:
+async def _fetch_pool(
+    on_update: Callable[[dict[str, str]], None] | None = None,
+) -> list[dict]:
+    """Fetch every candidate source in parallel.
+
+    If ``on_update`` is supplied it is invoked with a dict ``{source: status}``
+    snapshot each time a source transitions (``pending`` → ``running`` →
+    ``done``/``error``). It runs on the asyncio loop's thread, so callers
+    driving it from Streamlit should schedule UI writes on the main thread.
+    """
     env = Env.load()
     # Wider connection pool so 50+ concurrent board fetches don't exhaust
     # the default pool and cause cascading DNS / connect errors.
     limits = httpx.Limits(max_connections=100, max_keepalive_connections=40)
+
+    # Build the plan first so the callback sees every source as "pending"
+    # before any work starts. Preserves insertion order for predictable UI.
+    plan: list[tuple[str, type, dict]] = []
+    for key, cfg in CANDIDATE_SOURCES.items():
+        klass = REGISTRY.get(key)
+        if klass is None:
+            continue
+        plan.append((key, klass, cfg))
+
+    status_map: dict[str, str] = {key: "pending" for key, _, _ in plan}
+    if on_update:
+        on_update(dict(status_map))
+
     async with httpx.AsyncClient(timeout=30.0, limits=limits) as http:
         ctx = SourceContext(env=env, http=http)
-        tasks = []
-        for key, cfg in CANDIDATE_SOURCES.items():
-            klass = REGISTRY.get(key)
-            if klass is None:
-                continue
-            tasks.append(klass().collect(ctx, cfg))
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        async def _run_one(key: str, klass: type, cfg: dict) -> list[Signal]:
+            status_map[key] = "running"
+            if on_update:
+                on_update(dict(status_map))
+            try:
+                return await klass().collect(ctx, cfg) or []
+            except Exception:  # noqa: BLE001 — surfaced via status_map
+                status_map[key] = "error"
+                if on_update:
+                    on_update(dict(status_map))
+                return []
+            finally:
+                # "error" was set above; only promote to "done" on success.
+                if status_map.get(key) == "running":
+                    status_map[key] = "done"
+                    if on_update:
+                        on_update(dict(status_map))
+
+        results = await asyncio.gather(
+            *(_run_one(k, cls, cfg) for k, cls, cfg in plan),
+            return_exceptions=True,
+        )
 
     flat: list[Signal] = []
     for r in results:
@@ -1149,11 +1209,16 @@ def _get_ctx_cached(visitor_domain: str) -> dict:
 
 
 # Cached piece 2: ICP inference from scraped text. Key by (domain, content-hash)
-# so prompt or scrape changes correctly invalidate the cache.
+# so prompt or scrape changes correctly invalidate the cache. We intentionally
+# do NOT include session_id in the cache key — ICP results are deterministic
+# per (domain, scraped-text) and sharing across visitors is the whole point.
 @st.cache_data(ttl=60 * 60 * 24, show_spinner=False)
 def _get_inference_cached(domain: str, ctx_hash: str, ctx_text: str) -> dict:
     env = Env.load()
-    return asyncio.run(_infer_icp(domain, ctx_text, "", env))
+    # session_id pulled inside the async fn so the ledger attributes the spend
+    # to the visitor that triggered the *miss* (subsequent sessions hit cache).
+    session_id = _get_session_id()
+    return asyncio.run(_infer_icp(domain, ctx_text, "", env, session_id=session_id))
 
 
 def _ctx_hash(text: str) -> str:
@@ -1161,23 +1226,101 @@ def _ctx_hash(text: str) -> str:
     return hashlib.sha1(text.encode()).hexdigest()[:12]
 
 
+# ---------- session identity + cost guardrail ------------------------------
+
+def _get_session_id() -> str:
+    """Stable per-browser-session id used to attribute ledger spend and to
+    enforce the soft cap. We avoid anything that looks like PII — just a v4."""
+    import uuid as _uuid
+    sid = st.session_state.get("_sf_session_id")
+    if not sid:
+        sid = _uuid.uuid4().hex
+        st.session_state["_sf_session_id"] = sid
+    return sid
+
+
+def _session_budget_status() -> dict[str, Any]:
+    """Return the session's ledger-backed totals and whether the cap is hit.
+
+    Keys:
+      - calls / cost_usd : running totals from the SQLite ledger
+      - calls_left / cost_left_usd : remaining budget (never negative)
+      - capped : bool, True once either cap is reached
+      - reason : human-readable reason when capped (or empty)
+    """
+    sid = _get_session_id()
+    totals = session_totals(sid)
+    calls = int(totals.get("calls", 0))
+    cost = float(totals.get("cost_usd", 0.0))
+    capped = False
+    reason = ""
+    if calls >= SESSION_CALL_CAP:
+        capped = True
+        reason = f"hit the {SESSION_CALL_CAP}-call soft cap for this session"
+    elif cost >= SESSION_COST_CAP_USD:
+        capped = True
+        reason = f"hit the ${SESSION_COST_CAP_USD:.2f} cost soft cap for this session"
+    return {
+        "calls": calls,
+        "cost_usd": cost,
+        "calls_left": max(0, SESSION_CALL_CAP - calls),
+        "cost_left_usd": max(0.0, SESSION_COST_CAP_USD - cost),
+        "capped": capped,
+        "reason": reason,
+    }
+
+
+_SOURCE_GLYPH = {
+    "pending": "◦",
+    "running": "●",
+    "done":    "✓",
+    "error":   "×",
+}
+
+
+def _render_source_progress(status_map: dict[str, str]) -> str:
+    """Compact one-line-per-source status block for st.status.write()."""
+    lines = []
+    for src, state in status_map.items():
+        glyph = _SOURCE_GLYPH.get(state, "?")
+        lines.append(f"    {glyph} {src:<14} {state}")
+    return "\n".join(lines)
+
+
+def _fetch_pool_with_ui(status) -> list[dict]:
+    """Resolve the pool. Hits the disk cache first; on miss runs every source
+    in parallel and streams per-source status into ``status``."""
+    cached = _load_pool_from_disk()
+    if cached is not None:
+        # Hot cache path — render a single "all done" snapshot so the visitor
+        # still sees the source list even when we didn't touch the network.
+        snapshot = {key: "done" for key in CANDIDATE_SOURCES if REGISTRY.get(key)}
+        status.write("• Pool sources (cached):")
+        status.code(_render_source_progress(snapshot), language=None)
+        return cached
+
+    status.write("• Pool sources:")
+    progress_placeholder = status.empty()
+
+    def _on_update(snapshot: dict[str, str]) -> None:
+        # st.empty() is re-renderable; replace the block every tick.
+        progress_placeholder.code(_render_source_progress(snapshot), language=None)
+
+    pool = asyncio.run(_fetch_pool(on_update=_on_update))
+    _save_pool_to_disk(pool)
+    return pool
+
+
 def _analyze_with_progress(visitor_domain: str, status) -> dict:
     """Step-by-step analysis. Each step writes a line into the Streamlit
-    status block so the visitor sees what's happening, and the pool fetch
-    runs in parallel with the visitor's company scrape on a cold start."""
-    import concurrent.futures
-
-    # Cold-path parallelism: kick off pool fetch in a thread while we scrape
-    # the visitor's own company. When pool is hot (cache hit) this returns
-    # immediately; when cold (~15s), we recover that time against the scrape.
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
-        fut_pool = ex.submit(_get_pool)
-        status.write("• Scraping the visitor's public page…")
-        fut_ctx = ex.submit(_get_ctx_cached, visitor_domain)
-        ctx = fut_ctx.result()
-        pool = fut_pool.result()
-
+    status block so the visitor sees what's happening."""
+    status.write("• Scraping the visitor's public page…")
+    ctx = _get_ctx_cached(visitor_domain)
     status.write(f"  ✓ scraped {len(ctx['text'])} chars from {ctx['source'] or 'nothing'}")
+
+    # Pool fetch with per-source live progress (cache-aware).
+    pool = _fetch_pool_with_ui(status)
+
     status.write(f"• Inferring your ICP ({LLM_BACKEND}:{OLLAMA_MODEL if LLM_BACKEND == 'ollama' else 'claude'})…")
     inferred = _get_inference_cached(visitor_domain, _ctx_hash(ctx["text"]), ctx["text"])
     status.write(
@@ -1224,16 +1367,41 @@ st.html(
 """
 )
 
+# Establish session identity + read budget BEFORE rendering the form so we
+# can disable the submit button the moment the cap is hit.
+_get_session_id()
+_budget = _session_budget_status()
+
 with st.form("demo", clear_on_submit=False):
     raw_input = st.text_input(
         "domain",
         placeholder="ramp.com  ·  Linear  ·  stripe",
         label_visibility="collapsed",
         autocomplete="off",
+        disabled=_budget["capped"],
     )
-    submitted = st.form_submit_button("File the request →")
+    submitted = st.form_submit_button(
+        "File the request →",
+        disabled=_budget["capped"],
+    )
+
+if _budget["capped"]:
+    st.info(
+        f"You've {_budget['reason']} "
+        f"(used ${_budget['cost_usd']:.3f} across {_budget['calls']} calls). "
+        "Open a fresh browser tab to reset, or come back later — the API bill "
+        "lands on the owner's card, so we keep these demos polite."
+    )
+elif _budget["calls"] > 0:
+    st.caption(
+        f"§ Session budget · {_budget['calls']}/{SESSION_CALL_CAP} calls · "
+        f"${_budget['cost_usd']:.3f}/${SESSION_COST_CAP_USD:.2f}"
+    )
 
 if submitted:
+    # Re-check inside the handler in case the cap hit mid-render.
+    if _budget["capped"]:
+        st.stop()
     resolved = _resolve_input(raw_input)
     if not resolved:
         st.error(
