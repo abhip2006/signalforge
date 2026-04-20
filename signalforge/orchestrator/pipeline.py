@@ -5,6 +5,7 @@ signals  →  group by account  →  score  →  (above threshold) →  brief  �
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -16,7 +17,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from signalforge.config import Env, ICPConfig
 from signalforge.cost import LEDGER
 from signalforge.drafts import generate_drafts
-from signalforge.enrichment import fetch_company_context
+from signalforge.enrichment import fetch_company_context, fetch_contacts_for_domains
 from signalforge.models import (
     Company,
     Draft,
@@ -146,6 +147,25 @@ async def run_pipeline(
             results: list[tuple[EnrichedAccount, ResearchBrief, Draft, EvalScore]] = []
 
             targets = [a for a in accounts if a.icp_score >= icp.min_icp_score]
+
+            # Contact enrichment is opt-in — Apollo's free tier is tight and
+            # fanning out per-domain can burn a month's credits in one run.
+            # Enabled when APOLLO_ENABLED=1 OR the ICP config sets
+            # `apollo_enrichment: true` at the top level.
+            if _apollo_enabled(icp) and env.apollo_api_key and targets:
+                contacts_by_domain = await fetch_contacts_for_domains(
+                    [a.company.domain for a in targets],
+                    icp.target_titles,
+                    env,
+                )
+                targets = [
+                    a.model_copy(update={"contacts": contacts_by_domain.get(a.company.domain, [])})
+                    for a in targets
+                ]
+                # Also reflect the enriched contacts on the `accounts` list so
+                # downstream sinks (e.g. HTML report) see them.
+                enriched_map = {a.company.domain: a for a in targets}
+                accounts = [enriched_map.get(a.company.domain, a) for a in accounts]
             max_variants = int(icp.raw.get("drafts", {}).get("max_variants_per_account", 3))
             concurrency = int(icp.raw.get("runtime", {}).get("concurrency", 4))
             label = "researching" if skip_drafts else "research + drafts for"
@@ -222,6 +242,16 @@ def _first_company_name(signals: list[Signal]) -> str | None:
         if s.company_name:
             return s.company_name
     return None
+
+
+def _apollo_enabled(icp: ICPConfig) -> bool:
+    """Opt-in gate: env var APOLLO_ENABLED=1 OR `apollo_enrichment: true`
+    at the top level of the ICP YAML. Default is OFF — Apollo's free tier
+    quota can be exhausted by a single pipeline run.
+    """
+    if os.environ.get("APOLLO_ENABLED", "").strip() in {"1", "true", "TRUE", "yes"}:
+        return True
+    return bool(icp.raw.get("apollo_enrichment", False))
 
 
 def _empty_draft(a: EnrichedAccount) -> Draft:
