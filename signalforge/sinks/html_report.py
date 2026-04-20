@@ -31,6 +31,10 @@ TEMPLATE = Template("""<!doctype html>
   .signals { font-size: .82rem; color: #444; }
   .signals li { margin: .1rem 0; }
   details summary { cursor: pointer; color: #555; }
+  .falsify { margin-top: .5rem; padding: .4rem .6rem; background: #fff8e1; border-left: 3px solid #caa60a; font-size: .82rem; }
+  .falsify .label { font-weight: 600; color: #7a6500; margin-right: .3rem; }
+  .falsify ul { margin: .2rem 0 0 1rem; padding: 0; }
+  .falsify li { margin: .1rem 0; }
 </style>
 </head>
 <body>
@@ -84,6 +88,15 @@ TEMPLATE = Template("""<!doctype html>
       </div>
       {% if score.flagged %}<div class="flag">⚠ flagged: {{ score.flagged|join(", ") }}</div>{% endif %}
       {% if score.rationale %}<div class="meta">judge: {{ score.rationale }}</div>{% endif %}
+      {% if score.falsification_notes %}
+      <div class="falsify">
+        <span class="label">Falsifications</span>
+        <span class="meta">(conditions under which this score would be wrong)</span>
+        <ul>
+          {% for note in score.falsification_notes %}<li>{{ note }}</li>{% endfor %}
+        </ul>
+      </div>
+      {% endif %}
     </details>
   </div>
 {% endfor %}
