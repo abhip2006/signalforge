@@ -10,6 +10,7 @@ from signalforge.config import Env, ICPConfig
 from signalforge.cost import LEDGER
 from signalforge.cost import disabled as ledger_disabled
 from signalforge.drafts.evals import score_draft
+from signalforge.ledger import record_from_response
 from signalforge.models import Draft, DraftKind, EnrichedAccount, EvalScore, ResearchBrief
 
 DRAFTER_SYSTEM = dedent("""\
@@ -77,6 +78,7 @@ async def generate_drafts(
     )
     if not ledger_disabled():
         LEDGER.record("draft", env.claude_model, getattr(msg, "usage", None))
+    record_from_response(msg, model=env.claude_model, stage="draft")
     text = "".join(b.text for b in msg.content if getattr(b, "type", None) == "text").strip()
     data = _safe_json(text)
     variants = data.get("variants", []) or []

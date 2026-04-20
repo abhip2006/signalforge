@@ -1,11 +1,12 @@
-"""Token + cost ledger.
+"""Token + cost ledger (in-process aggregator).
 
 Every Claude call records a UsageEvent. The process-wide Ledger aggregates
 so we can surface cost-per-run, cache hit rate, and per-step cost in the
 final CLI summary. Without this, the cost of "add another regen attempt"
 is invisible — and that's how LLM pipelines quietly cost $1,000/day.
 
-Pricing (per 1M tokens, as of 2026-Q1). Override via env if they change.
+Pricing constants live in ``signalforge.ledger`` — this module imports them
+so there is exactly ONE table of Anthropic rates in the codebase.
 """
 from __future__ import annotations
 
@@ -13,23 +14,12 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-# Pricing in USD per 1M tokens: (input, output, cache_write, cache_read)
-# cache_write ≈ 1.25× input, cache_read ≈ 0.1× input
-_DEFAULT_PRICING: dict[str, tuple[float, float, float, float]] = {
-    "claude-opus-4-7":            (15.0,  75.0, 18.75, 1.50),
-    "claude-opus-4-6":            (15.0,  75.0, 18.75, 1.50),
-    "claude-sonnet-4-6":          ( 3.0,  15.0,  3.75, 0.30),
-    "claude-haiku-4-5-20251001":  ( 1.0,   5.0,  1.25, 0.10),
-    "claude-haiku-4-5":           ( 1.0,   5.0,  1.25, 0.10),
-}
+from signalforge.ledger import ANTHROPIC_PRICING, pricing_for
 
-
-def _pricing_for(model: str) -> tuple[float, float, float, float]:
-    for key, px in _DEFAULT_PRICING.items():
-        if model.startswith(key) or key.startswith(model):
-            return px
-    # Unknown model — assume Sonnet-tier so the number isn't suspiciously small.
-    return _DEFAULT_PRICING["claude-sonnet-4-6"]
+# Re-export so existing imports (`from signalforge.cost import _pricing_for`)
+# in tests and callers keep working unchanged.
+_DEFAULT_PRICING = ANTHROPIC_PRICING
+_pricing_for = pricing_for
 
 
 @dataclass(frozen=True)
